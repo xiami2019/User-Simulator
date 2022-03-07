@@ -27,7 +27,7 @@ import random
 from collections import defaultdict
 
 from utils import definitions
-from utils.io_utils import load_json, get_or_create_logger
+from utils.utils import load_json, get_or_create_logger
 
 
 logger = get_or_create_logger(__name__)

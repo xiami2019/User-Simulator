@@ -1,10 +1,10 @@
-from curses import raw
-from mimetypes import init
 import os
+from posixpath import dirname
 import re
 import copy
 import argparse
 from collections import OrderedDict, defaultdict
+from urllib import request
 from xml import dom
 
 import spacy
@@ -39,13 +39,9 @@ class Preprocessor(object):
             self.do_tokenize_text = True
 
         self.mapping_pair = self.load_mapping_pair()
-
-        self.get_db_values()
-
-        self.preprocess_db()
-
+        # self.get_db_values()
+        # self.preprocess_db()
         self.db = MultiWozDB(os.path.join(self.data_dir, "db"))
-
         self.data = load_json(os.path.join(self.data_dir, data_name))
 
         self.delex_sg_valdict_path = os.path.join(self.save_dir, "delex_single_valdict.json")
@@ -332,36 +328,164 @@ class Preprocessor(object):
 
         return text
 
-    def generate_goal_states(self, raw_dial):
-        init_goal_states = {}
-        for domain in raw_dial['goal']:
-            if raw_dial['goal'][domain]:
-                if domain not in init_goal_states:
-                    init_goal_states[domain] = {}
-                for intent in raw_dial['goal'][domain]:
-                    if intent in ['info', 'fail_info', 'book', 'fail_book']:
-                        if 'inform' not in init_goal_states[domain]:
-                            init_goal_states[domain]['inform'] = defaultdict(set)
-                        for slot_name, slot_value in raw_dial['goal'][domain][intent].items():
-                            # invalid, pre_invalid ?
-                            if slot_name == 'invalid' or slot_name == 'pre_invalid':
+    def update_goal_states(self, goal_states, actions, type):
+        map_act_tokens_to_inform_goal_tokens = {
+            'leave': 'leaveat',
+            'arrive': 'arriveby',
+            'depart': 'departure',
+            'dest': 'destination',
+            'price': 'pricerange',
+        }
+        map_act_tokens_to_request_goal_tokens = {
+            'post': 'postcode',
+            'addr': 'address',
+            'price': 'pricerange',
+            'ref': 'reference',
+            'fee': 'price',
+            'ticket': 'price',
+        }
+
+        map_sysact_value_to_goal_value = {
+            'southern part of town': 'south',
+        }
+
+        new_goal_states = copy.deepcopy(goal_states)
+        if type == 'user':
+            # update inform slot in goal
+            for domain in actions:
+                if 'inform' in actions[domain]:
+                    for slot_pairs in actions[domain]['inform']:
+                        slot_name, slot_value = slot_pairs
+                        
+                        if slot_name in map_act_tokens_to_inform_goal_tokens:
+                            slot_name =  map_act_tokens_to_inform_goal_tokens[slot_name]
+
+                        for intent in ['info', 'fail_info', 'book', 'fail_book']:
+                            if domain not in goal_states or intent not in goal_states[domain]:
                                 continue
-                            init_goal_states[domain]['inform'][slot_name].add(slot_value)
-                    
-                    elif intent == 'reqt':
-                        if 'request' not in init_goal_states[domain]:
-                            init_goal_states[domain]['request'] = raw_dial['goal'][domain][intent]
 
-        for single_round in raw_dial['log']:
-            if single_round['metadata'] == {}:
-                # user utterance
-                single_round['goal_state'] = init_goal_states.copy()
-            # update goal states:
-            for action in 
-# 
+                            if len(goal_states[domain][intent]) == 0:
+                                new_goal_states[domain].pop(intent)
+                                if len(new_goal_states[domain]):
+                                    new_goal_states.pop(domain)
+                                continue
+                            
+                            for goal_slot_name, goal_slot_value in goal_states[domain][intent].items():
+                                if goal_slot_name == slot_name and goal_slot_value == slot_value:
+                                    new_goal_states[domain][intent].pop(goal_slot_name)
+                                    if len(new_goal_states[domain][intent]) == 0:
+                                        new_goal_states[domain].pop(intent)
+                                        if len(new_goal_states[domain]) == 0:
+                                            new_goal_states.pop(domain)
+        elif type == 'sys':
+            # update request slot in goal
+            for domain in actions:
+                if domain not in goal_states:
+                    continue
+                for intent in actions[domain]:
+                    if intent in ['inform', 'offerbooked']:
+                        for slot_pair in actions[domain][intent]:
+                            slot_name, slot_value = slot_pair
+                            
+                            inform_slot_name = map_act_tokens_to_inform_goal_tokens[slot_name] if slot_name in map_act_tokens_to_inform_goal_tokens else slot_name
+                            request_slot_name = map_act_tokens_to_request_goal_tokens[slot_name] if slot_name in map_act_tokens_to_request_goal_tokens else slot_name
 
+                            if slot_value in map_sysact_value_to_goal_value:
+                                slot_value = map_sysact_value_to_goal_value[slot_value]
+                            # update inform slot in goal
 
-        return raw_dial
+                            for goal_intent in ['info', 'fail_info', 'book', 'fail_book']:
+                                if goal_intent not in goal_states[domain]:
+                                    continue
+
+                                # clear empty intents
+                                if len(goal_states[domain][goal_intent]) == 0:
+                                    new_goal_states[domain].pop(goal_intent)
+                                    if len(new_goal_states[domain]):
+                                        new_goal_states.pop(domain)
+                                    continue
+
+                                for goal_slot_name, goal_slot_value in goal_states[domain][goal_intent].items():
+                                    if goal_slot_name == inform_slot_name and goal_slot_value == slot_value:
+                                        new_goal_states[domain][goal_intent].pop(goal_slot_name)
+                                        if len(new_goal_states[domain][goal_intent]) == 0:
+                                            new_goal_states[domain].pop(goal_intent)
+                                            if len(new_goal_states[domain]) == 0:
+                                                new_goal_states.pop(domain)
+                            
+                            # update request slot in goal
+                            if 'reqt' not in goal_states[domain] or domain not in new_goal_states or 'reqt' not in new_goal_states[domain]:
+                                continue
+
+                            for goal_slot_name in goal_states[domain]['reqt']:
+                                if goal_slot_name == request_slot_name:
+                                    if goal_slot_name in new_goal_states[domain]['reqt']:
+                                        new_goal_states[domain]['reqt'].remove(goal_slot_name)
+                                    if len(new_goal_states[domain]['reqt']) == 0:
+                                        new_goal_states[domain].pop('reqt')
+                                        if len(new_goal_states[domain]) == 0:
+                                            new_goal_states.pop(domain)
+        else:
+            raise Exception('Invalid action type!')
+        
+        return new_goal_states
+
+    def convert_goal_dict_to_span(self, goal_dict):
+        goal_span = ''
+        for domain in goal_dict:
+            seened_slot_pair = set()
+            has_inform = False
+            goal_span += '[' + domain + '] '
+            # add inform slot first
+            for intent in goal_dict[domain]:
+                if intent in ['info', 'fail_info']:
+                    if not has_inform:
+                        goal_span += '[inform] '
+                        has_inform = True
+                    for slot_name, slot_value in goal_dict[domain][intent].items():
+                        temp_span = slot_name + ' ' + slot_value
+                        # 去重
+                        if temp_span in seened_slot_pair:
+                            continue
+                        else:
+                            seened_slot_pair.add(temp_span)
+                        
+                        if isinstance(slot_value, list):
+                            raise Exception('Multiple values')
+                        goal_span += '[value_' + slot_name + '] '
+                        goal_span += slot_value + ' '
+
+            # add book slot 
+            has_book = False
+            for intent in goal_dict[domain]:
+                if intent in ['book', 'fail_book']:
+                    if not has_book:
+                        goal_span += '[book] '
+                        has_book = True
+                    for slot_name, slot_value in goal_dict[domain][intent].items():
+                        if slot_name in ['pre_invalid', 'invalid']:
+                            continue
+                        # 去重
+                        temp_span = slot_name + ' ' + slot_value
+                        if temp_span in seened_slot_pair:
+                            continue
+                        else:
+                            seened_slot_pair.add(temp_span)
+
+                        if isinstance(slot_value, list):
+                            raise Exception('Multiple values')
+                        goal_span += '[value_' + slot_name + '] '
+                        goal_span += slot_value + ' '
+
+            # add request slot
+            if 'reqt' in goal_dict[domain]:
+                goal_span += '[request] '
+                for slot_name in goal_dict[domain]['reqt']:
+                        goal_span += slot_name + ' '                    
+
+        goal_span = goal_span[:-1] # remove last space
+
+        return goal_span
 
     def preprocess(self):
         # preprocess_main
@@ -370,11 +494,14 @@ class Preprocessor(object):
         self.unique_da = {}
         ordered_sysact_dict = {}
 
-        for fn, dial in tqdm(list(self.data.items())):
-            raw_dial = self.generate_goal_states(dial)
+        last_goal_states_not_empty = []
 
+        for fn, raw_dial in tqdm(list(self.data.items())):
             if ".json" not in fn:
                 fn += ".json"
+
+            if fn not in self.dev_list:
+                continue
 
             if fn in ['pmul4707.json', 'pmul2245.json', 'pmul4776.json', 'pmul3872.json', 'pmul4859.json']:
                 continue
@@ -403,10 +530,21 @@ class Preprocessor(object):
             prev_constraint_dict = {}
             prev_turn_domain = ['general']
             ordered_sysact_dict[fn] = {}
+            goal_states = copy.deepcopy(compressed_goal)
+            
+            for domain in compressed_goal:
+                for intent in compressed_goal[domain]:
+                    for slot_name in compressed_goal[domain][intent]:
+                        if slot_name == 'pre_invalid' or slot_name == 'invalid':
+                            goal_states[domain][intent].pop(slot_name)
+                        elif intent != 'reqt' and '-' in compressed_goal[domain][intent][slot_name]:
+                            goal_states[domain][intent][slot_name] = goal_states[domain][intent][slot_name].replace('-', ' - ')
+                    if goal_states[domain][intent] == {}:
+                        del goal_states[domain][intent]
+                        if goal_states[domain] == {}:
+                            del goal_states[domain]
 
             for turn_num, dial_turn in enumerate(raw_dial['log']):
-                # for user turn, have text
-                # sys turn: text, belief states(metadata), dialog_act, span_info
                 dial_state = dial_turn['metadata']
 
                 if self.do_tokenize_text:
@@ -415,6 +553,8 @@ class Preprocessor(object):
                         dial_turn["text"].replace(".", " . ").split())
 
                 if not dial_state:   # user
+                    single_turn['goal_states'] = self.convert_goal_dict_to_span(goal_states)
+
                     # delexicalize user utterance, either by annotation or by val_dict
                     u = ' '.join(clean_text(dial_turn['text']).split())
                     if 'span_info' in dial_turn and dial_turn['span_info']:
@@ -425,19 +565,49 @@ class Preprocessor(object):
                     single_turn['user'] = u
                     single_turn['user_delex'] = u_delex
 
+                    # get user action
                     user_act_dict = {}
-                    turn_dom_ua = set() # ua = user action
-                    for act in dial_turn['dialog_act']:
-                        d, a = act.split('-')
-                        turn_dom_ua.add(d)
-                    turn_dom_ua = list(turn_dom_ua)
+                    add_to_last_collect = []
+                    for act, slot_pairs in dial_turn['dialog_act'].items():
+                        if act == 'general-greet':
+                            continue
+                        domain, intent = act.split('-')
+                        if domain not in user_act_dict:
+                            user_act_dict[domain] = {}
+                        add_p = []
+                        for slot_pair in slot_pairs:
+                            slot_name, slot_value = slot_pair[0], slot_pair[1]
+                            if slot_name == 'none':
+                                continue
+                            elif definitions.DA_ABBR_TO_SLOT_NAME.get(slot_name):
+                                slot_name = definitions.DA_ABBR_TO_SLOT_NAME[slot_name]
+                            add_p.append((slot_name, slot_value))
+                        add_to_last = True if intent in ['request', 'bye', 'thank'] else False
+                        if add_to_last:
+                            add_to_last_collect.append((domain, intent, add_p))
+                        else:
+                            user_act_dict[domain][intent] = add_p
+                    for domain, intent, add_p in add_to_last_collect:
+                       user_act_dict[domain][intent] = add_p
 
-                    if len(turn_dom_ua) != 1 and 'general' in turn_dom_ua:
-                        turn_dom_ua.remove('general')
-                    if len(turn_dom_ua) != 1 and 'booking' in turn_dom_ua:
-                        turn_dom_ua.remove('booking')
+                    for domain in copy.copy(user_act_dict):
+                        acts = user_act_dict[domain]
+                        if not acts:
+                            del user_act_dict[domain]
 
+                    user_act = []
+
+                    if 'general-greet' in dial_turn['dialog_act']:
+                        user_act.extend(['[general]', '[greet]'])
+                    for domain, acts in user_act_dict.items():
+                        user_act += ['[' + domain + ']']
+                        for intent, slot_pairs in acts.items():
+                            user_act += ['[' + intent + ']']
+                            for slot in slot_pairs:
+                                user_act += [slot[0]]
                     
+                    single_turn['user_act'] = ' '.join(user_act)
+                    goal_states = self.update_goal_states(goal_states, user_act_dict, 'user')
 
                 else:   # system
                     # delexicalize system response, either by annotation or by val_dict
@@ -541,13 +711,13 @@ class Preprocessor(object):
                             a = booking_act_map.get(a, a)
                         add_p = []
                         for param in params:
-                            p = param[0]
+                            p, v = param[0], param[1]
                             if p == 'none':
                                 continue
                             elif definitions.DA_ABBR_TO_SLOT_NAME.get(p):
                                 p = definitions.DA_ABBR_TO_SLOT_NAME[p]
                             if p not in add_p:
-                                add_p.append(p)
+                                add_p.append((p, v))
                         add_to_last = True if a in [
                             'request', 'reqmore', 'bye', 'offerbook'] else False
                         if add_to_last:
@@ -576,7 +746,8 @@ class Preprocessor(object):
                         for a, slots in acts.items():
                             self.unique_da[d+'-'+a] = 1
                             sys_act += ['[' + a + ']']
-                            sys_act += slots
+                            if len(slots) > 0:                                
+                                sys_act += list(set([slot[0] for slot in slots])) # only add slot name
 
                     # get db pointers
                     matnums = self.db.get_match_num(constraint_dict)
@@ -596,9 +767,7 @@ class Preprocessor(object):
                     single_turn['turn_num'] = len(dial['log'])
                     single_turn['turn_domain'] = ' '.join(
                         ['['+d+']' for d in turn_domain])
-
-                    single_turn['user_act'] = ' '.join(user_act)
-                    single_turn['goal_state'] = ' '.join(goal_state)
+                    goal_states = self.update_goal_states(goal_states, sys_act_dict, 'sys')
 
                     prev_turn_domain = copy.deepcopy(turn_domain)
                     prev_constraint_dict = copy.deepcopy(constraint_dict)
@@ -609,6 +778,11 @@ class Preprocessor(object):
                         for t in single_turn['user_delex'].split():
                             if '[' in t and ']' in t and not t.startswith('[') and not t.endswith(']'):
                                 single_turn['user_delex'].replace(t, t[t.index('['): t.index(']')+1])
+                    
+                    # check
+                    if turn_num == len(raw_dial['log']) - 1:
+                        if single_turn['goal_states'] != '':
+                            last_goal_states_not_empty.append(fn)
 
                     single_turn = {}
 
@@ -625,6 +799,9 @@ class Preprocessor(object):
         save_json(train_data, os.path.join(self.save_dir, "train_data.json"))
         save_json(dev_data, os.path.join(self.save_dir, "dev_data.json"))
         save_json(test_data, os.path.join(self.save_dir, "test_data.json"))
+
+        print(last_goal_states_not_empty)
+        print(len(last_goal_states_not_empty), count)
 
 
 if __name__ == "__main__":
