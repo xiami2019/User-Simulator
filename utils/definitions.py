@@ -60,6 +60,16 @@ INFORMABLE_SLOTS = {
 ALL_INFSLOT = ["type", "parking", "pricerange", "internet", "stay", "day", "people", "area", "stars", "name",
                "leave", "destination", "departure", "arrive", "department", "food", "time"]
 
+GOAL_SLOTS = {
+    'taxi': [''],
+    'police': ['phone', 'postcode', 'address'],
+    'hospital': [''],
+    'hotel': ['people', 'pricerange', 'stars', 'parking', 'name', 'postcode', 'address', 'area', 'day', 'phone', 'stay', 'type', 'internet'],
+    'attraction': [''],
+    'train': ['destination', 'duration', 'people', 'leave', 'departure', 'arrive', ],
+    'restaurant': [''],
+}
+
 EXTRACTIVE_SLOT = ["leave", "arrive", "destination", "departure", "type", "name", "food"]
 
 DA_ABBR_TO_SLOT_NAME = {
@@ -83,6 +93,10 @@ DIALOG_ACTS = {
     'general': ['bye', 'greet', 'reqmore', 'welcome'],
 }
 
+USER_ACTS = {
+    'general': ['thank'],
+}
+
 BOS_USER_TOKEN = "<bos_user>"
 EOS_USER_TOKEN = "<eos_user>"
 
@@ -92,6 +106,16 @@ BOS_BELIEF_TOKEN = "<bos_belief>"
 EOS_BELIEF_TOKEN = "<eos_belief>"
 
 BELIEF_TOKENS = [BOS_BELIEF_TOKEN, EOS_BELIEF_TOKEN]
+
+BOS_GOAL_TOEKN = "<bos_goal>"
+EOS_GOAL_TOKEN = "<eos_goal>"
+
+GOAL_TOKENS = [BOS_GOAL_TOEKN, EOS_GOAL_TOKEN]
+
+BOS_USER_ACTION_TOKEN = "<bos_user_act>"
+EOS_USER_ACTION_TOKEN = "<eos_user_act>"
+
+USER_ACTION_TOEKNS = [BOS_USER_ACTION_TOKEN, EOS_USER_ACTION_TOKEN]
 
 BOS_DB_TOKEN = "<bos_db>"
 EOS_DB_TOKEN = "<eos_db>"
@@ -116,4 +140,4 @@ DB_3_TOKEN = "[db_3]"
 
 DB_STATE_TOKENS = [DB_NULL_TOKEN, DB_0_TOKEN, DB_1_TOKEN, DB_2_TOKEN, DB_3_TOKEN]
 
-SPECIAL_TOKENS = USER_TOKENS + BELIEF_TOKENS + DB_TOKENS + ACTION_TOKENS + RESP_TOKENS + DB_STATE_TOKENS
+SPECIAL_TOKENS = USER_TOKENS + BELIEF_TOKENS + DB_TOKENS + ACTION_TOKENS + RESP_TOKENS + DB_STATE_TOKENS + GOAL_TOKENS + USER_ACTION_TOEKNS

@@ -12,7 +12,7 @@ import spacy
 from tqdm import tqdm
 
 from utils import definitions
-from utils.utils import load_json, save_json, load_text
+from utils.io_utils import load_json, save_json, load_text
 from utils.clean_dataset import clean_text, clean_slot_values
 
 from external_knowledges import MultiWozDB
@@ -330,8 +330,6 @@ class Preprocessor(object):
 
     def update_goal_states(self, goal_states, actions, type):
         map_act_tokens_to_inform_goal_tokens = {
-            'leave': 'leaveat',
-            'arrive': 'arriveby',
             'depart': 'departure',
             'dest': 'destination',
             'price': 'pricerange',
@@ -378,7 +376,6 @@ class Preprocessor(object):
                                         if len(new_goal_states[domain]) == 0:
                                             new_goal_states.pop(domain)
         elif type == 'sys':
-            # update request slot in goal
             for domain in actions:
                 if domain not in goal_states:
                     continue
@@ -395,7 +392,7 @@ class Preprocessor(object):
                             # update inform slot in goal
 
                             for goal_intent in ['info', 'fail_info', 'book', 'fail_book']:
-                                if goal_intent not in goal_states[domain]:
+                                if goal_intent not in goal_states[domain] or goal_intent not in new_goal_states[domain]:
                                     continue
 
                                 # clear empty intents
@@ -407,11 +404,11 @@ class Preprocessor(object):
 
                                 for goal_slot_name, goal_slot_value in goal_states[domain][goal_intent].items():
                                     if goal_slot_name == inform_slot_name and goal_slot_value == slot_value:
-                                        new_goal_states[domain][goal_intent].pop(goal_slot_name)
-                                        if len(new_goal_states[domain][goal_intent]) == 0:
-                                            new_goal_states[domain].pop(goal_intent)
-                                            if len(new_goal_states[domain]) == 0:
-                                                new_goal_states.pop(domain)
+                                        if goal_slot_name in new_goal_states[domain][goal_intent]:
+                                            new_goal_states[domain][goal_intent].pop(goal_slot_name)
+                                # 只有弹出goal_slot_name后才会考虑弹出goal_intent和domain；
+                                if goal_intent in new_goal_states[domain] and len(new_goal_states[domain][goal_intent]) == 0:
+                                    new_goal_states[domain].pop(goal_intent)
                             
                             # update request slot in goal
                             if 'reqt' not in goal_states[domain] or domain not in new_goal_states or 'reqt' not in new_goal_states[domain]:
@@ -421,10 +418,11 @@ class Preprocessor(object):
                                 if goal_slot_name == request_slot_name:
                                     if goal_slot_name in new_goal_states[domain]['reqt']:
                                         new_goal_states[domain]['reqt'].remove(goal_slot_name)
-                                    if len(new_goal_states[domain]['reqt']) == 0:
-                                        new_goal_states[domain].pop('reqt')
-                                        if len(new_goal_states[domain]) == 0:
-                                            new_goal_states.pop(domain)
+                            if 'reqt' in new_goal_states[domain] and len(new_goal_states[domain]['reqt']) == 0:
+                                new_goal_states[domain].pop('reqt')
+
+                if len(new_goal_states[domain]) == 0:
+                    new_goal_states.pop(domain)
         else:
             raise Exception('Invalid action type!')
         
@@ -491,6 +489,7 @@ class Preprocessor(object):
         # preprocess_main
         train_data, dev_data, test_data = {}, {}, {}
         count = 0
+        no_goal_state_turn = 0
         self.unique_da = {}
         ordered_sysact_dict = {}
 
@@ -499,9 +498,6 @@ class Preprocessor(object):
         for fn, raw_dial in tqdm(list(self.data.items())):
             if ".json" not in fn:
                 fn += ".json"
-
-            if fn not in self.dev_list:
-                continue
 
             if fn in ['pmul4707.json', 'pmul2245.json', 'pmul4776.json', 'pmul3872.json', 'pmul4859.json']:
                 continue
@@ -518,6 +514,14 @@ class Preprocessor(object):
                             if definitions.NORMALIZE_SLOT_NAMES.get(req_slot):
                                 g['reqt'][i] = definitions.NORMALIZE_SLOT_NAMES[req_slot]
                                 dial_reqs.append(g['reqt'][i])
+
+                    # normalize inform slots
+                    for intent in ['info', 'fail_info', 'book', 'fail_book']:
+                        if g.get(intent):
+                            for inform_slot in g[intent]:
+                                if definitions.NORMALIZE_SLOT_NAMES.get(inform_slot):
+                                    new_inform_slot = definitions.NORMALIZE_SLOT_NAMES[inform_slot]
+                                    g[intent][new_inform_slot] = g[intent].pop(inform_slot)
                     compressed_goal[dom] = g
                     if dom in definitions.ALL_DOMAINS:
                         dial_domains.append(dom)
@@ -534,6 +538,9 @@ class Preprocessor(object):
             
             for domain in compressed_goal:
                 for intent in compressed_goal[domain]:
+                    if intent not in ['info', 'fail_info', 'book', 'fail_book', 'reqt']:
+                        del goal_states[domain][intent]
+                        continue
                     for slot_name in compressed_goal[domain][intent]:
                         if slot_name == 'pre_invalid' or slot_name == 'invalid':
                             goal_states[domain][intent].pop(slot_name)
@@ -541,8 +548,8 @@ class Preprocessor(object):
                             goal_states[domain][intent][slot_name] = goal_states[domain][intent][slot_name].replace('-', ' - ')
                     if goal_states[domain][intent] == {}:
                         del goal_states[domain][intent]
-                        if goal_states[domain] == {}:
-                            del goal_states[domain]
+                if goal_states[domain] == {}:
+                    del goal_states[domain]
 
             for turn_num, dial_turn in enumerate(raw_dial['log']):
                 dial_state = dial_turn['metadata']
@@ -553,7 +560,7 @@ class Preprocessor(object):
                         dial_turn["text"].replace(".", " . ").split())
 
                 if not dial_state:   # user
-                    single_turn['goal_states'] = self.convert_goal_dict_to_span(goal_states)
+                    single_turn['goal_state'] = self.convert_goal_dict_to_span(goal_states)
 
                     # delexicalize user utterance, either by annotation or by val_dict
                     u = ' '.join(clean_text(dial_turn['text']).split())
@@ -781,7 +788,11 @@ class Preprocessor(object):
                     
                     # check
                     if turn_num == len(raw_dial['log']) - 1:
-                        if single_turn['goal_states'] != '':
+                        if 'goal_state' not in single_turn:
+                            no_goal_state_turn += 1
+                            continue
+                        last_goal_states = self.convert_goal_dict_to_span(goal_states)
+                        if last_goal_states != '':
                             last_goal_states_not_empty.append(fn)
 
                     single_turn = {}
@@ -800,8 +811,7 @@ class Preprocessor(object):
         save_json(dev_data, os.path.join(self.save_dir, "dev_data.json"))
         save_json(test_data, os.path.join(self.save_dir, "test_data.json"))
 
-        print(last_goal_states_not_empty)
-        print(len(last_goal_states_not_empty), count)
+        print('turns do not have goal states: {:d}; last goal state is not empty: {:d}; total dialog: {:d}'.format(no_goal_state_turn, len(last_goal_states_not_empty), count))
 
 
 if __name__ == "__main__":
