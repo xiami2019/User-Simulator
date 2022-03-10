@@ -270,18 +270,18 @@ class MultiWOZRunner(BaseRunner):
                                         attention_mask=attention_mask,
                                         labels=belief_labels)
 
-            belief_loss = belief_outputs[0]
-            belief_logits = belief_outputs[1]
+            belief_loss = belief_outputs.loss
+            belief_logits = belief_outputs.logits
             belief_pred = torch.argmax(belief_logits, dim=-1)
 
-            encoder_last_hidden_state = belief_outputs[6]
+            encoder_last_hidden_state = belief_outputs.encoder_last_hidden_state
             encoder_outputs = BaseModelOutput(last_hidden_state=encoder_last_hidden_state)
         
             resp_outputs = self.model(attention_mask=attention_mask,
                                         encoder_outputs=encoder_outputs,
                                         labels=resp_labels)
-            resp_loss = resp_outputs[0]
-            resp_logits = resp_outputs[1]
+            resp_loss = resp_outputs.loss
+            resp_logits = resp_outputs.logits
             resp_pred = torch.argmax(resp_logits, dim=-1)
 
             num_belief_correct, num_belief_count = self.count_tokens(belief_pred, belief_labels, pad_id=self.reader.pad_token_id)
@@ -291,8 +291,8 @@ class MultiWOZRunner(BaseRunner):
             resp_outputs = self.model(input_ids=inputs,
                                         attention_mask=attention_mask,
                                         labels=resp_labels)
-            resp_loss = resp_outputs[0]
-            resp_logits = resp_outputs[1]
+            resp_loss = resp_outputs.loss
+            resp_logits = resp_outputs.logits
             resp_pred = torch.argmax(resp_logits, dim=-1)
             num_resp_correct, num_resp_count = self.count_tokens(resp_pred, resp_labels, pad_id=self.reader.pad_token_id)
         else:
