@@ -259,13 +259,13 @@ class MultiWOZRunner(BaseRunner):
     def step_fn(self, inputs, resp_labels, belief_labels=None):
         inputs = inputs.to(self.cfg.device)
         resp_labels = resp_labels.to(self.cfg.device)
-        if self.cfg.agent_type == 'ds' and belief_labels:
+        if self.cfg.agent_type == 'ds' and belief_labels is not None:
              belief_labels = belief_labels.to(self.cfg.device)
 
         attention_mask = torch.where(inputs == self.reader.pad_token_id, 0, 1)
 
         encoder_outputs = None
-        if self.cfg.agent_type == 'ds' and belief_labels:
+        if self.cfg.agent_type == 'ds' and belief_labels is not None:
             belief_outputs = self.model(input_ids=inputs,
                                         attention_mask=attention_mask,
                                         labels=belief_labels)
@@ -300,7 +300,7 @@ class MultiWOZRunner(BaseRunner):
 
         loss = self.cfg.resp_loss_coeff * resp_loss
 
-        if self.cfg.agent_type == 'ds' and belief_labels:
+        if self.cfg.agent_type == 'ds' and belief_labels is not None:
             loss += self.cfg.bspn_loss_coeff * belief_loss
 
         step_outputs = {}
