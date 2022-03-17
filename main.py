@@ -26,7 +26,7 @@ import numpy as np
 from config import get_config
 from runner import MultiWOZRunner
 
-from utils.io_utils import get_or_create_logger
+from utils.utils import get_or_create_logger
 
 logger = get_or_create_logger(__name__)
 

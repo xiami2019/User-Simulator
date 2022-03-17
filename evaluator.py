@@ -36,7 +36,7 @@ from config import CONFIGURATION_FILE_NAME
 from reader import MultiWOZReader
 
 from utils import definitions
-from utils.io_utils import get_or_create_logger, load_json
+from utils.utils import get_or_create_logger, load_json
 from utils.clean_dataset import clean_slot_values
 
 

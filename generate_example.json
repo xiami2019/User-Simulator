@@ -1,0 +1,132 @@
+{
+    "pmul1635.json": {
+        "goal": {
+            "hotel": {
+                "info": {
+                    "area": "east",
+                    "parking": "yes",
+                    "stars": "4",
+                    "internet": "yes"
+                },
+                "book": {
+                    "people": "3",
+                    "day": "monday",
+                    "stay": "4"
+                }
+            },
+            "train": {
+                "info": {
+                    "destination": "bishops stortford",
+                    "day": "friday",
+                    "departure": "cambridge",
+                    "arrive": "19:45"
+                },
+                "reqt": [
+                    "time",
+                    "leave",
+                    "price"
+                ]
+            }
+        }
+    },
+    "log": [
+        {
+            "user": "i need a hotel with wifi in the east.",
+            "user_act": "[hotel] [inform] internet area",
+            "belief_states": "<bos_belief> [hotel] [value_internet] yes [value_area] east <eos_belief>",
+            "sys_act": "",
+            "sys": "we have some nice [value_type] in the area. do you prefer something with free parking or a [value_type]?"
+        },
+        {
+            "user": "i would like free parking and free wifi. the hotel should have a star of 4.",
+            "user_act": "[hotel] [inform] parking internet area stars",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "both are nice. both are cheap and moderately priced. can i recommend one for you?"
+        },
+        {
+            "user": "yes please. i need it for 3 people and 4 nights starting from monday.",
+            "user_act": "[hotel] [inform] stay day people",
+            "belief_states": "<bos_belief> [hotel] [value_type] hotel [value_parking] yes [value_internet] yes [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "[hotel] [request] area",
+            "sys": "i am sorry, but i am having trouble booking that for you. would you like to try a different area of town?"
+        },
+        {
+            "user": "no, i really need it in the east. can you try again please?",
+            "user_act": "[hotel] [inform] area",
+            "belief_states": "<bos_belief> [hotel] [value_type] hotel [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "[general] [reqmore]",
+            "sys": "i am sorry, it looks like there is still no availibility. would you like to try another [value_type]?"
+        },
+        {
+            "user": "can you try again? i need the hotel to be in the east, free wifi and free parking.",
+            "user_act": "[hotel] [inform] parking internet area",
+            "belief_states": "<bos_belief> [hotel] [value_type] hotel [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "parking isn't causing any problems."
+        },
+        {
+            "user": "can you try again?",
+            "user_act": "",
+            "belief_states": "<bos_belief> [hotel] [value_type] hotel [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "sorry, it looks like there was an error."
+        },
+        {
+            "user": "can you try again? i need the hotel to have free wifi and free parking. east part of town.",
+            "user_act": "[hotel] [inform] parking internet area",
+            "belief_states": "<bos_belief> [hotel] [value_type] hotel [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "name is a jockey, i have a listing for [value_name], is that okay?"
+        },
+        {
+            "user": "yes, that would be fine.",
+            "user_act": "",
+            "belief_states": "<bos_belief> [hotel] [value_type] hotel [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 [value_name] a and b guest house <eos_belief>",
+            "sys_act": "",
+            "sys": "i have your reservation made. i can give you the reference number."
+        },
+        {
+            "user": "yes, please give me the reference number.",
+            "user_act": "",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [hotel] [offerbooked] reference [general] [reqmore] <eos_act> <bos_resp> your reference number is [value_reference] . is there anything else i can help you with ? <eos_resp>",
+            "sys_act": "[general] [request] people day",
+            "sys": "i am sorry, i am having trouble making that booking. i need to know what day you 'll arrive, how many people, and how many nights you 'll be staying."
+        },
+        {
+            "user": "i am sorry, i misspoke. i need the hotel for 3 people and 4 nights starting on monday.",
+            "user_act": "[hotel] [inform] stay day people",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [hotel] [offerbooked] reference [general] [reqmore] <eos_act> <bos_resp> booking was successful . reference number is : [value_reference] . is there anything else i can help you with ? <eos_resp>",
+            "sys_act": "",
+            "sys": "both. would you like to try a different [value_type]?"
+        },
+        {
+            "user": "yes, same price range.",
+            "user_act": "",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [hotel] [offerbooked] reference name <eos_act> <bos_resp> i was able to book [value_name] , reference number is [value_reference] <eos_resp>",
+            "sys_act": "",
+            "sys": "i was able to find a different [value_type]."
+        },
+        {
+            "user": "yes please try another hotel.",
+            "user_act": "[hotel] [inform]",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [hotel] [offerbooked] reference name <eos_act> <bos_resp> i was able to book you into [value_name] and your reference number is [value_reference] . <eos_resp>",
+            "sys_act": "[hotel] [offerbooked] reference name",
+            "sys": "i was able to book [value_name], reference number is [value_reference]."
+        },
+        {
+            "user": "i am also looking for a train. the train should leave on friday and should go to bishops stortford.",
+            "user_act": "[train] [inform] destination day arrive departure",
+            "belief_states": "<bos_db> [db_2] <eos_db> <bos_act> [train] [inform] choice [request] leave arrive <eos_act> <bos_resp> there are [value_choice] trains that day . do you have a departure or arrival time in mind ? <eos_resp>",
+            "sys_act": "",
+            "sys": "Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga Ga"
+        },
+        {
+            "user": "i need the travel time, departure time, and price of the train departing from bishops stortford.",
+            "user_act": "[train] [request] time price",
+            "belief_states": "<bos_db> [db_2] <eos_db> <bos_act> [train] [inform] time price leave <eos_act> <bos_resp> the departure time is [value_leave] , the price is [value_price] , and the travel time is [value_time] . <eos_resp>",
+            "sys_act": "[train] [inform] time price leave",
+            "sys": "the departure time is [value_leave]. the price is [value_price]. the duration of the trip is [value_time]."
+        }
+    ]
+}

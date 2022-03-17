@@ -23,21 +23,20 @@
 """
 
 import os
-import copy
 import spacy
 import random
 import difflib
 from tqdm import tqdm
 from difflib import get_close_matches
 from itertools import chain
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import T5Tokenizer
 
 from utils import definitions
-from utils.io_utils import load_json, load_pickle, save_pickle, get_or_create_logger
+from utils.utils import load_json, load_pickle, save_pickle, get_or_create_logger
 from external_knowledges import MultiWozDB
 
 logger = get_or_create_logger(__name__)

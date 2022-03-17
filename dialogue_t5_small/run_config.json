@@ -40,7 +40,7 @@
     "model_dir": "dialogue_t5_small",
     "seed": 42,
     "ckpt": null,
-    "log_frequency": 300,
+    "log_frequency": 100,
     "max_to_keep_ckpt": 10,
     "num_gpus": 1
 }

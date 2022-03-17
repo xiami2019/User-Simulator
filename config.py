@@ -25,7 +25,7 @@ import argparse
 from random import choices
 from tabnanny import check
 
-from utils.io_utils import load_json, save_json, get_or_create_logger
+from utils.utils import load_json, save_json, get_or_create_logger
 
 
 CONFIGURATION_FILE_NAME = "run_config.json"

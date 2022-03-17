@@ -18,7 +18,6 @@
    limitations under the License.
 """
 
-from cProfile import label
 import os
 import re
 import copy
@@ -27,11 +26,9 @@ import time
 import glob
 import shutil
 from abc import *
-from pydantic import BaseModel
 from tqdm import tqdm
 from collections import OrderedDict, defaultdict
 
-import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AdamW, get_linear_schedule_with_warmup, get_constant_schedule
@@ -43,7 +40,7 @@ from reader import MultiWOZIterator, MultiWOZReader
 from evaluator import MultiWozEvaluator
 
 from utils import definitions
-from utils.io_utils import get_or_create_logger, load_json, save_json
+from utils.utils import get_or_create_logger, load_json, save_json
 
 
 logger = get_or_create_logger(__name__)
@@ -78,7 +75,7 @@ class Reporter(object):
         self.resp_correct += step_outputs["resp"]["correct"]
         self.resp_count += step_outputs["resp"]["count"]
 
-        if "bspn" in step_outputs:
+        if 'belief' in step_outputs:
             self.belief_loss += step_outputs["belief"]["loss"]
             self.belief_correct += step_outputs["belief"]["correct"]
             self.belief_count += step_outputs["belief"]["count"]

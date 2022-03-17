@@ -1,0 +1,174 @@
+{
+    "pmul1635.json": {
+        "goal": {
+            "hotel": {
+                "info": {
+                    "area": "east",
+                    "parking": "yes",
+                    "stars": "4",
+                    "internet": "yes"
+                },
+                "book": {
+                    "people": "3",
+                    "day": "monday",
+                    "stay": "4"
+                }
+            },
+            "train": {
+                "info": {
+                    "destination": "bishops stortford",
+                    "day": "friday",
+                    "departure": "cambridge",
+                    "arrive": "19:45"
+                },
+                "reqt": [
+                    "time",
+                    "leave",
+                    "price"
+                ]
+            }
+        }
+    },
+    "log": [
+        {
+            "user": "i need a place to stay that includes free wifi and parking.",
+            "user_act": "[hotel] [inform] parking internet",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes <eos_belief>",
+            "sys_act": "",
+            "sys": "we have many options that match your request. do you have a preference for the type of lodging?"
+        },
+        {
+            "user": "i would like a place in the east with a 4 star rating.",
+            "user_act": "[hotel] [inform] area stars",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "[value_name] is nice."
+        },
+        {
+            "user": "that sounds good. can you book it for 3 people for 4 nights starting monday?",
+            "user_act": "[hotel] [inform] stay day people",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "i need to know how many will be staying at the [value_type]?"
+        },
+        {
+            "user": "i will be staying 4 nights.",
+            "user_act": "",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 4 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "i am sorry, i am having trouble booking this for you."
+        },
+        {
+            "user": "how about 1 night?",
+            "user_act": "[hotel] [inform] stay",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "i am sorry, i was unable to book you for [value_stay] night. i can try for a shorter stay if you would like."
+        },
+        {
+            "user": "how about 1 night?",
+            "user_act": "[hotel] [inform] stay",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "i was able to book you for [value_stay] night starting [value_day] for [value_people] people."
+        },
+        {
+            "user": "okay, can i get the reference number?",
+            "user_act": "[hotel] [request] reference",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 <eos_belief>",
+            "sys_act": "",
+            "sys": "i was able to book that for you."
+        },
+        {
+            "user": "yes, i will need the reference number.",
+            "user_act": "[hotel] [request] reference",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 [value_name] a and b guest house <eos_belief>",
+            "sys_act": "",
+            "sys": "i was able to book that for you."
+        },
+        {
+            "user": "thank you. can i have the reference number?",
+            "user_act": "[hotel] [request] reference",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 [value_name] a and b guest house <eos_belief>",
+            "sys_act": "",
+            "sys": "i was able to book that for you."
+        },
+        {
+            "user": "yes, i will need the reference number.",
+            "user_act": "[hotel] [request] reference",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 [value_name] carolina bed and breakfast <eos_belief>",
+            "sys_act": "",
+            "sys": "i have successfully booked it for you."
+        },
+        {
+            "user": "i am also looking for a train that leaves friday from cambridge to bishops stortford.",
+            "user_act": "[train] [inform] destination day departure",
+            "belief_states": "<bos_belief> [hotel] [value_parking] yes [value_internet] yes [value_stay] 1 [value_day] monday [value_people] 3 [value_area] east [value_stars] 4 [value_name] allenbell [train] [value_destination] bishops stortford [value_day] friday [value_departure] cambridge <eos_belief>",
+            "sys_act": "",
+            "sys": "i have one leaving at the same time. will that be fine?"
+        },
+        {
+            "user": "i need to get to bishops stortford by 19:45. how long is the train ride?",
+            "user_act": "[train] [inform] destination arrive",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] time id arrive [offerbook] <eos_act> <bos_resp> the train ride is [value_time] long . the [value_id] arrives at [value_arrive] . would you like me to book that for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, but i am experiencing some errors. can you please restate your request?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, but there are no trains that meet those requirements. would you like to try something else?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, but there are no trains that meet those requirements. would you like to try something else?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, but i am experiencing some errors. can you please restate your request?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, there are no trains that meet those requirements. would you like to try something else?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, there are no trains that meet those requirements. would you like to try something else?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, but i am experiencing some errors. can you please restate your request?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, there are no trains that meet those requirements. would you like to try something else?"
+        },
+        {
+            "user": "i need a train from cambridge to bishops stortford on friday, leaving after 19:45.",
+            "user_act": "[train] [inform] destination day departure leave",
+            "belief_states": "<bos_db> [db_1] <eos_db> <bos_act> [train] [inform] arrive destination departure leave id [offerbook] <eos_act> <bos_resp> [value_id] leaves [value_departure] at [value_leave] and arrives in [value_destination] at [value_arrive] . would you like me to book this train for you ? <eos_resp>",
+            "sys_act": "",
+            "sys": "i am sorry, there are no trains that meet those requirements. would you like to try something else?"
+        }
+    ]
+}
