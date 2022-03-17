@@ -24,7 +24,6 @@ import copy
 import json
 import pickle
 import logging
-
 from . import definitions
 
 
@@ -132,6 +131,29 @@ def convert_generate_action_span_to_dict(act_span):
 
     return act_dict
 
+def normalize_slot_value(value):
+    value_map = {
+        'southern part of town': 'south',
+    }
+    norm_value = value.lower()
+    if norm_value in value_map:
+        norm_value = value_map[norm_value]
+
+    norm_value_list = norm_value.split(' ')
+    norm_value = ''
+
+    # combine 's: john 's to jogn's
+    for index, token in enumerate(norm_value_list):
+        if token == '\'s':
+            norm_value = norm_value[:-1]
+            norm_value += token + ' '
+        elif index != len(norm_value_list) - 1:
+            norm_value += token + ' '
+        else:
+            norm_value += token
+
+    return norm_value
+
 def update_goal_states_during_gen(goal_states, actions, type):
     '''
     update goal states dict only using slot name
@@ -182,7 +204,7 @@ def update_goal_states_during_gen(goal_states, actions, type):
             if domain not in goal_states:
                 continue
             for intent in actions[domain]:
-                if intent in ['inform', 'offerbooked']:
+                if intent in ['inform', 'offerbooked', 'offerbook', 'recommend']:
                     for slot_name in actions[domain][intent]:
                         inform_slot_name = map_act_tokens_to_inform_goal_tokens[slot_name] if slot_name in map_act_tokens_to_inform_goal_tokens else slot_name
                         request_slot_name = map_act_tokens_to_request_goal_tokens[slot_name] if slot_name in map_act_tokens_to_request_goal_tokens else slot_name
@@ -242,10 +264,6 @@ def update_goal_states(goal_states, actions, type):
             'ticket': 'price',
         }
 
-        map_sysact_value_to_goal_value = {
-            'southern part of town': 'south',
-        }
-
         new_goal_states = copy.deepcopy(goal_states)
         if type == 'user':
             # update inform slot in goal
@@ -255,6 +273,9 @@ def update_goal_states(goal_states, actions, type):
                 if 'inform' in actions[domain]:
                     for slot_pairs in actions[domain]['inform']:
                         slot_name, slot_value = slot_pairs
+                        if slot_name == 'none' or slot_value == 'none':
+                            continue
+                        slot_value = normalize_slot_value(slot_value)
                         
                         if slot_name in map_act_tokens_to_inform_goal_tokens:
                             slot_name =  map_act_tokens_to_inform_goal_tokens[slot_name]
@@ -270,6 +291,7 @@ def update_goal_states(goal_states, actions, type):
                                 continue
                             
                             for goal_slot_name, goal_slot_value in goal_states[domain][intent].items():
+                                goal_slot_value = normalize_slot_value(goal_slot_value)
                                 if goal_slot_name == slot_name and goal_slot_value == slot_value:
                                     new_goal_states[domain][intent].pop(goal_slot_name)
                                     if len(new_goal_states[domain][intent]) == 0:
@@ -281,9 +303,12 @@ def update_goal_states(goal_states, actions, type):
                 if domain not in goal_states:
                     continue
                 for intent in actions[domain]:
-                    if intent in ['inform', 'offerbooked']:
+                    if intent in ['inform', 'offerbooked', 'offerbook', 'recommend']:
                         for slot_pair in actions[domain][intent]:
                             slot_name, slot_value = slot_pair
+                            if slot_name == 'none' or slot_value == 'none':
+                                continue
+                            slot_value = normalize_slot_value(slot_value)
                             
                             inform_slot_name = map_act_tokens_to_inform_goal_tokens[slot_name] if slot_name in map_act_tokens_to_inform_goal_tokens else slot_name
                             request_slot_name = map_act_tokens_to_request_goal_tokens[slot_name] if slot_name in map_act_tokens_to_request_goal_tokens else slot_name
@@ -291,10 +316,7 @@ def update_goal_states(goal_states, actions, type):
                             if request_slot_name == 'price' and domain in ['hotel', 'restaurant']:
                                 request_slot_name = 'pricerange'
 
-                            if slot_value in map_sysact_value_to_goal_value:
-                                slot_value = map_sysact_value_to_goal_value[slot_value]
                             # update inform slot in goal
-
                             for goal_intent in ['info', 'fail_info', 'book', 'fail_book']:
                                 if goal_intent not in goal_states[domain] or goal_intent not in new_goal_states[domain]:
                                     continue
@@ -307,6 +329,7 @@ def update_goal_states(goal_states, actions, type):
                                     continue
 
                                 for goal_slot_name, goal_slot_value in goal_states[domain][goal_intent].items():
+                                    goal_slot_value = normalize_slot_value(goal_slot_value)
                                     if goal_slot_name == inform_slot_name and goal_slot_value == slot_value:
                                         if goal_slot_name in new_goal_states[domain][goal_intent]:
                                             new_goal_states[domain][goal_intent].pop(goal_slot_name)
@@ -388,3 +411,8 @@ def convert_goal_dict_to_span(goal_dict):
     goal_span = goal_span[:-1] # remove last space
 
     return goal_span
+
+if __name__ == '__main__':
+    value = 'Saint John \'s College'
+    new_value = normalize_slot_value(value)
+    print(new_value)

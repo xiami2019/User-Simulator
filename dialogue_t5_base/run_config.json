@@ -7,7 +7,7 @@
     "ururu": false,
     "agent_type": "ds",
     "batch_size": 8,
-    "epochs": 20,
+    "epochs": 30,
     "warmup_steps": -1,
     "warmup_ratio": 0.2,
     "learning_rate": 0.0005,
@@ -40,7 +40,7 @@
     "model_dir": "dialogue_t5_base",
     "seed": 42,
     "ckpt": null,
-    "log_frequency": 100,
+    "log_frequency": 300,
     "max_to_keep_ckpt": 10,
     "num_gpus": 1
 }

@@ -272,9 +272,19 @@ class MultiWOZRunner(BaseRunner):
             belief_pred = torch.argmax(belief_logits, dim=-1)
 
             encoder_last_hidden_state = belief_outputs.encoder_last_hidden_state
-            encoder_outputs = BaseModelOutput(last_hidden_state=encoder_last_hidden_state)
-        
+            encoder_hidden_states = belief_outputs.encoder_hidden_states
+            encoder_attentions = belief_outputs.encoder_attentions
+            encoder_outputs = BaseModelOutput(last_hidden_state=encoder_last_hidden_state,
+                                                hidden_states=encoder_hidden_states,
+                                                attentions=encoder_attentions)
+
+            batch_size, max_length = resp_labels.shape[0], resp_labels.shape[1]
+            decoder_attention_mask = torch.ones(batch_size, max_length).to(self.cfg.device) # mask pad and db tokens
+            for i in range(4):
+                decoder_attention_mask[:,i] = 0
+
             resp_outputs = self.model(attention_mask=attention_mask,
+                                        decoder_attention_mask=decoder_attention_mask,
                                         encoder_outputs=encoder_outputs,
                                         labels=resp_labels)
             resp_loss = resp_outputs.loss

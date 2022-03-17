@@ -240,9 +240,9 @@ class MultiWOZIterator(BaseIterator):
                     dial_resp_label_ids.append(resp_label_ids)
 
                     if ururu:
-                        turn_text = turn['user'] + turn['resp']
+                        turn_text = turn['user'] + turn['redx']
                     else:
-                        turn_text = turn['user_aspn'] + turn['user'] + turn['bspn'] + turn['dbpn'] + turn['aspn'] + turn['resp']
+                        turn_text = turn['user'] + turn['bspn'] + turn['dbpn'] + turn['aspn'] + turn['redx']
 
                     dial_history.append(turn_text)
 
@@ -289,14 +289,7 @@ class MultiWOZIterator(BaseIterator):
                     bspn_label = bspn
 
                     belief_label_ids = bspn_label + [self.reader.eos_token_id]
-                    '''
-                    if task == "e2e":
-                        resp = turn["dbpn"] + turn["aspn"] + turn["redx"]
-
-                    else:
-                        resp = turn["dbpn"] + turn["aspn"] + turn["resp"]
-                    '''
-                    resp = turn["dbpn"] + turn["aspn"] + turn["redx"]
+                    resp = turn['dbpn'] + turn["aspn"] + turn["redx"]
                     resp_label_ids = resp + [self.reader.eos_token_id]
 
                     dial_encoder_input_ids.append(encoder_input_ids)
@@ -304,17 +297,9 @@ class MultiWOZIterator(BaseIterator):
                     dial_resp_label_ids.append(resp_label_ids)
 
                     if ururu:
-                        if task == "dst":
-                            turn_text = turn["user"] + turn["resp"]
-                        else:
                             turn_text = turn["user"] + turn["redx"]
                     else:
-                        if task == "dst":
-                            turn_text = turn["user"] + bspn + \
-                                turn["dbpn"] + turn["aspn"] + turn["resp"]
-                        else:
-                            turn_text = turn["user"] + bspn + \
-                                turn["dbpn"] + turn["aspn"] + turn["redx"]
+                            turn_text = turn["user"] + bspn + turn["dbpn"] + turn["aspn"] + turn["redx"]
 
                     dial_history.append(turn_text)
 
@@ -343,7 +328,6 @@ class MultiWOZIterator(BaseIterator):
                 tensor_encoder_input_ids = pad_sequence(tensor_encoder_input_ids,
                                                         batch_first=True,
                                                         padding_value=self.reader.pad_token_id)
-
                 tensor_belief_label_ids = pad_sequence(tensor_belief_label_ids,
                                                        batch_first=True,
                                                        padding_value=self.reader.pad_token_id)
