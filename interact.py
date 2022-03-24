@@ -3,11 +3,12 @@
 # output: a session
 import os
 import torch
-import numpy
+from tqdm import tqdm
 from itertools import chain
 from collections import OrderedDict
 from transformers import T5ForConditionalGeneration, T5Tokenizer
-from utils.utils import load_json, save_json, convert_goal_dict_to_span, convert_generate_action_span_to_dict, update_goal_states_during_gen, get_or_create_logger
+from utils.utils import load_json, save_json, convert_goal_dict_to_span, convert_generate_action_span_to_dict, \
+update_goal_states_during_gen, get_or_create_logger, split_user_act_and_resp
 from utils import definitions
 from external_knowledges import MultiWozDB
 
@@ -93,34 +94,6 @@ class InteractionEnvironment(object):
             encoded_text = encoded_text[:-1]
 
         return encoded_text
-
-    def split_user_act_and_resp(self, model_output):
-        if model_output[0] == self.simulator_tokenizer.pad_token:
-            model_output = model_output[1:]
-        if model_output[-1] == self.simulator_tokenizer.eos_token:
-            model_output = model_output[:-1]
-
-        # user aspn
-        bos_user_act_token = definitions.BOS_USER_ACTION_TOKEN
-        eos_user_act_token = definitions.EOS_USER_ACTION_TOKEN
-        if bos_user_act_token in model_output and eos_user_act_token in model_output:
-            bos_user_act_idx = model_output.index(bos_user_act_token)
-            eos_user_act_idx = model_output.index(eos_user_act_token)
-            user_aspn = model_output[bos_user_act_idx:eos_user_act_idx + 1]
-        else:
-            user_aspn = [bos_user_act_token, eos_user_act_token]
-
-        # user utterance
-        bos_user_resp_token = definitions.BOS_USER_TOKEN
-        eos_user_resp_token = definitions.EOS_USER_TOKEN
-        if bos_user_resp_token in model_output and eos_user_resp_token in model_output:
-            bos_user_resp_idx = model_output.index(bos_user_resp_token)
-            eos_user_resp_idx = model_output.index(eos_user_resp_token)
-            user_utterance = model_output[bos_user_resp_idx:eos_user_resp_idx + 1]
-        else:
-            user_utterance = [bos_user_resp_token, eos_user_resp_token]
-
-        return user_aspn, user_utterance
 
     def split_system_act_and_resp(self, model_output):
         bos_act_token_id = self.dialog_tokenizer.convert_tokens_to_ids(definitions.BOS_ACTION_TOKEN)
@@ -271,17 +244,17 @@ class InteractionEnvironment(object):
                 return True
             if len(goal_state_dict) == 0:
                 # goal清空后终止
-                print('goal清空后终止')
+                # print('goal清空后终止')
                 return False
             if len(log) >= 20:
                 # 超过20轮终止
-                print('超过20轮终止')
+                # print('超过20轮终止')
                 return False
             if system_act and ('[bye]' in system_act or '[thank]' in system_act):
-                print('thank or bye')
+                # print('thank or bye')
                 return False
             if user_act and ('[bye]' in user_act or '[thank]' in user_act):
-                print('thank or bye')
+                # print('thank or bye')
                 return False
             # 不满足退出条件则继续循环
             return True
@@ -310,7 +283,7 @@ class InteractionEnvironment(object):
                     belief_states_output = self.dialog_model.generate(
                         input_ids=input_ids,
                         eos_token_id=self.dialog_tokenizer.eos_token_id,
-                        max_length=100,
+                        max_length=200,
                     )
                 belief_states_output = belief_states_output.cpu().numpy().tolist()
                 bspn_gen = self.finalize_bspn(belief_states_output[0])
@@ -321,6 +294,7 @@ class InteractionEnvironment(object):
                     raise Exception('Domain is empty')
                 db_token = self.bspn_to_db_pointer(bspn_gen, turn_domain)
                 dbpn_gen = self.encode_text(db_token, self.dialog_tokenizer, bos_token=definitions.BOS_DB_TOKEN, eos_token=definitions.EOS_DB_TOKEN)
+                dbpn_gen = [self.dialog_tokenizer.pad_token_id] + dbpn_gen
 
                 resp_decoder_input_ids = self.tensorize([dbpn_gen])
                 resp_decoder_input_ids = resp_decoder_input_ids.to(device)
@@ -330,7 +304,7 @@ class InteractionEnvironment(object):
                         input_ids=input_ids,
                         decoder_input_ids=resp_decoder_input_ids,
                         eos_token_id=self.dialog_tokenizer.eos_token_id,
-                        max_length=100,
+                        max_length=300,
                     )
                 resp_outputs = resp_outputs.cpu().numpy().tolist()
                 system_act, system_resp = self.split_system_act_and_resp(resp_outputs[0])
@@ -368,13 +342,13 @@ class InteractionEnvironment(object):
                     user_utterance_output = self.simulator_model.generate(
                         input_ids=input_ids,
                         eos_token_id=self.simulator_tokenizer.eos_token_id,
-                        max_length=100,
+                        max_length=200,
                     )
                 # output_tokens = self.simulator_tokenizer.convert_ids_to_tokens(user_utterance_output[0])
                 output_tokens = self.simulator_tokenizer.decode(user_utterance_output[0]).split(' ')
-                user_act, user_utterance = self.split_user_act_and_resp(output_tokens)
+                user_act, user_utterance = split_user_act_and_resp(self.simulator_tokenizer, output_tokens)
 
-                if len(user_act[1:-1]) == 0:
+                if len(user_act[1:-1]) == 0 or user_act[1][1:-1] == 'general':
                     turn_domain = ['[general]']
                 elif user_act[1][1:-1] not in definitions.ALL_DOMAINS:
                     raise Exception('Invalid domain token')
@@ -390,13 +364,16 @@ class InteractionEnvironment(object):
                 goal_state_dict = update_goal_states_during_gen(goal_state_dict, user_act_dict, 'user')
 
         dial_gen['log'] = log
-        print('生成完成')
-        save_json(dial_gen, 'generate_example2.json')
+        return dial_gen
 
 if __name__ == '__main__':
-    simulator_path = './simulator_t5_base/ckpt-epoch10'
-    dialog_sys_path = './dialogue_t5_base/ckpt-epoch10'
+    simulator_path = './simulator_t5_base/ckpt-epoch8'
+    dialog_sys_path = './dialogue_t5_base_predict_db/ckpt-epoch10'
     data_dir = './data/MultiWOZ_2.0/'
     interaction = InteractionEnvironment(simulator_path, dialog_sys_path, data_dir)
-    test_goal = interaction.all_goals['valid'][0]
-    interaction.generate_single_dialog(test_goal)
+    dialogs_gen = []
+    for goal in tqdm(interaction.all_goals['test']):
+        dial_gen = interaction.generate_single_dialog(goal)
+        dialogs_gen.append(dial_gen)
+    
+    save_json(dialogs_gen, 'generate_example.json')

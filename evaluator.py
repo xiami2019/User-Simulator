@@ -126,6 +126,23 @@ class MultiWozEvaluator(object):
         # only evaluate these slots for dialog success
         self.requestables = ['phone', 'address', 'postcode', 'reference', 'id']
 
+    def bleu_metric_us(self, data, eval_dial_list=None):
+        gen, truth = [], []
+        for dial_id, dial in data.items():
+            if eval_dial_list and dial_id not in eval_dial_list:
+                continue
+            for turn in dial:
+                gen.append(" ".join(turn['user_gen'].split()))
+                truth.append(" ".join(turn['user'].split()[1:-1]))
+        
+        wrap_generated = [[_] for _ in gen]
+        wrap_truth = [[_] for _ in truth]
+        if gen and truth:
+            sc = self.bleu_scorer.score(zip(wrap_generated, wrap_truth))
+        else:
+            sc = 0.0
+        return sc
+    
     def bleu_metric(self, data, eval_dial_list=None):
         gen, truth = [], []
         for dial_id, dial in data.items():
@@ -634,8 +651,15 @@ class MultiWozEvaluator(object):
         else:
             return None
 
-    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False):
+    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False):
+        if eval_for_us:
+            bleu = self.bleu_metric_us(data)
+            return bleu
+        else:
+            bleu = self.bleu_metric(data)
+        
         bleu = self.bleu_metric(data)
+        
         success, match, req_offer_counts, dial_num = self.context_to_response_eval(
             data, eval_dial_list=eval_dial_list, add_auxiliary_task=add_auxiliary_task)
 

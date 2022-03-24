@@ -81,6 +81,8 @@ def add_config(parser):
     group.add_argument("-use_true_prev_resp", action="store_true")
     group.add_argument("-top_n", type=int, default=5)
     group.add_argument("-output", type=str, default=None)
+    group.add_argument("-predict_agent_type", type=str, default="ds", choices=['ds', 'us'], 
+                        help="us: user simulator; ds: dialog system")
 
     group = parser.add_argument_group("Misc")
     group.add_argument("-run_type", type=str, required=True,

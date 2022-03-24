@@ -412,6 +412,34 @@ def convert_goal_dict_to_span(goal_dict):
 
     return goal_span
 
+def split_user_act_and_resp(tokenizer, model_output):
+    if model_output[0] == tokenizer.pad_token:
+        model_output = model_output[1:]
+    if model_output[-1] == tokenizer.eos_token:
+        model_output = model_output[:-1]
+
+    # user aspn
+    bos_user_act_token = definitions.BOS_USER_ACTION_TOKEN
+    eos_user_act_token = definitions.EOS_USER_ACTION_TOKEN
+    if bos_user_act_token in model_output and eos_user_act_token in model_output:
+        bos_user_act_idx = model_output.index(bos_user_act_token)
+        eos_user_act_idx = model_output.index(eos_user_act_token)
+        user_aspn = model_output[bos_user_act_idx:eos_user_act_idx + 1]
+    else:
+        user_aspn = [bos_user_act_token, eos_user_act_token]
+
+    # user utterance
+    bos_user_resp_token = definitions.BOS_USER_TOKEN
+    eos_user_resp_token = definitions.EOS_USER_TOKEN
+    if bos_user_resp_token in model_output and eos_user_resp_token in model_output:
+        bos_user_resp_idx = model_output.index(bos_user_resp_token)
+        eos_user_resp_idx = model_output.index(eos_user_resp_token)
+        user_utterance = model_output[bos_user_resp_idx:eos_user_resp_idx + 1]
+    else:
+        user_utterance = [bos_user_resp_token, eos_user_resp_token]
+
+    return user_aspn, user_utterance
+
 if __name__ == '__main__':
     value = 'Saint John \'s College'
     new_value = normalize_slot_value(value)

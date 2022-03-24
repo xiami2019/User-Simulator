@@ -57,7 +57,10 @@ def main():
     if cfg.run_type == "train":
         runner.train()
     else:
-        runner.predict()
+        if cfg.predict_agent_type == 'ds':
+            runner.predict()
+        elif cfg.predict_agent_type == 'us':
+            runner.us_predict()
 
 
 if __name__ == "__main__":

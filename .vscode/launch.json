@@ -9,7 +9,52 @@
             "type": "python",
             "request": "launch",
             "program": "interact.py",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "7",
+            }
+        },
+        {
+            "name": "Python: predict_ds",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-run_type",
+                "predict",
+                "-ckpt",
+                "./dialogue_t5_base_predict_db/ckpt-epoch30",
+                "-output",
+                "inference",
+                "-batch_size",
+                "16",
+            ],
+            "env":{
+                "CUDA_VISIBLE_DEVICES": "7",
+            }
+        },
+        {
+            "name": "Python: predict_us",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-run_type",
+                "predict",
+                "-predict_agent_type",
+                "us",
+                "-ckpt",
+                "./simulator_t5_base/ckpt-epoch30",
+                "-output",
+                "inference",
+                "-batch_size",
+                "16",
+            ],
+            "env":{
+                "CUDA_VISIBLE_DEVICES": "7",
+            }
         }
     ]
 }
