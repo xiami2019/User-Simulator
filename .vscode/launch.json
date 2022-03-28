@@ -15,6 +15,24 @@
             }
         },
         {
+            "name": "Python: evaluator.py",
+            "type": "python",
+            "request": "launch",
+            "program": "evaluator.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-output_result_path",
+                "generate_example_2.json",
+                "-config_dir",
+                "dialogue_t5_base_predict_db",
+                "-eval_type",
+                "online"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "7",
+            }
+        },
+        {
             "name": "Python: predict_ds",
             "type": "python",
             "request": "launch",

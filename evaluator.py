@@ -458,10 +458,10 @@ class MultiWozEvaluator(object):
                     if requestable == 'reference':
                         if '[value_reference]' in sent_t:
                             # if pointer was allowing for that?
-                            if 'booked' in turn['pointer'] or 'ok' in turn['pointer']:
-                                provided_requestables[domain].append(
-                                    'reference')
-                            # provided_requestables[domain].append('reference')
+                            if 'pointer' not in turn:
+                                provided_requestables[domain].append('reference')
+                            elif 'booked' in turn['pointer'] or 'ok' in turn['pointer']:
+                                provided_requestables[domain].append('reference')
                     else:
                         if '[value_' + requestable + ']' in sent_t:
                             provided_requestables[domain].append(requestable)
@@ -651,38 +651,73 @@ class MultiWozEvaluator(object):
         else:
             return None
 
-    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False):
-        if eval_for_us:
-            bleu = self.bleu_metric_us(data)
-            return bleu
-        else:
+    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False, online_eval=False):
+        if not online_eval:
+            if eval_for_us:
+                bleu = self.bleu_metric_us(data)
+                return bleu
+            else:
+                bleu = self.bleu_metric(data)
+            
             bleu = self.bleu_metric(data)
-        
-        bleu = self.bleu_metric(data)
         
         success, match, req_offer_counts, dial_num = self.context_to_response_eval(
             data, eval_dial_list=eval_dial_list, add_auxiliary_task=add_auxiliary_task)
 
-        return bleu, success, match
+        if online_eval:
+            return success, match
+        else:
+            return bleu, success, match
+
+def convert_results_format(results):
+    '''
+    修改key：
+    sys → resp_gen
+    belief_states → bspn_gen
+    '''
+    processed_results = {}
+
+    for dial in results:
+        for key in dial.keys():
+            if key.endswith('json'):
+                dial_id = key
+        processed_results[dial_id] = []
+        for index, single_turn in enumerate(dial['log']):
+            new_single_turn = {'turn_num': index}
+            if 'sys' in single_turn:
+                single_turn['resp_gen'] = single_turn['sys']
+                del single_turn['sys']
+            if 'belief_states' in single_turn:
+                single_turn['bspn_gen'] = single_turn['belief_states']
+                del single_turn['belief_states']
+            for key, value in single_turn.items():
+                new_single_turn[key] = value
+            processed_results[dial_id].append(new_single_turn)
+
+    return processed_results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Argument for evaluation")
 
-    parser.add_argument("-data", type=str, required=True)
     parser.add_argument("-data_type", type=str, default="test", choices=["dev", "test"])
     parser.add_argument("-excluded_domains", type=str, nargs="+")
+    parser.add_argument("-eval_type", type=str, default='offline', choices=['offline', 'online'])
+    parser.add_argument("-output_result_path", type=str, required=True)
+    parser.add_argument("-config_dir", type=str, required=True)
 
     args = parser.parse_args()
 
     cfg_path = os.path.join(
-        os.path.dirname(os.path.dirname(args.data)), CONFIGURATION_FILE_NAME)
+        args.config_dir, CONFIGURATION_FILE_NAME)
 
     cfg = SimpleNamespace(**load_json(cfg_path))
 
-    data = load_json(args.data)
+    data = load_json(args.output_result_path)
+    if args.eval_type == 'online':
+        data = convert_results_format(data)
 
-    dial_by_domain = load_json("data/MultiWOZ_2.1/dial_by_domain.json")
+    dial_by_domain = load_json("data/MultiWOZ_2.0/dial_by_domain.json")
 
     eval_dial_list = None
     if args.excluded_domains is not None:
@@ -693,18 +728,25 @@ if __name__ == "__main__":
             if len(set(domain_list) & set(args.excluded_domains)) == 0:
                 eval_dial_list.extend(dial_ids)
 
-    reader = MultiWOZReader(cfg.backbone, cfg.version)
+    reader = MultiWOZReader(cfg, cfg.version)
 
     evaluator = MultiWozEvaluator(reader, args.data_type)
 
     if cfg.task == "e2e":
-        bleu, success, match = evaluator.e2e_eval(
-            data, eval_dial_list=eval_dial_list, add_auxiliary_task=cfg.add_auxiliary_task)
+        if args.eval_type == 'offline':
+            bleu, success, match = evaluator.e2e_eval(
+                data, eval_dial_list=eval_dial_list, add_auxiliary_task=cfg.add_auxiliary_task)
 
-        score = 0.5 * (success + match) + bleu
+            score = 0.5 * (success + match) + bleu
 
-        logger.info('match: %2.2f; success: %2.2f; bleu: %2.2f; score: %.2f',
-            match, success, bleu, score)
+            logger.info('Offline Evaluation: match: %2.2f; success: %2.2f; bleu: %2.2f; score: %.2f',
+                match, success, bleu, score)
+        elif args.eval_type == 'online':
+            success, match = evaluator.e2e_eval(
+                data, eval_dial_list=eval_dial_list, add_auxiliary_task=cfg.add_auxiliary_task, online_eval=True)
+            logger.info('Online Evaluation: match: %2.2f; success: %2.2f;', match, success)
+        else:
+            raise Exception('Invalid evaluation type.')
     else:
         joint_goal, f1, accuracy, _, _ = evaluator.dialog_state_tracking_eval(
             data, eval_dial_list=eval_dial_list, add_auxiliary_task=cfg.add_auxiliary_task)
