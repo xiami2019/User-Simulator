@@ -18,12 +18,8 @@
    limitations under the License.
 """
 
-from ast import parse
-from email.policy import default
 import os
 import argparse
-from random import choices
-from tabnanny import check
 
 from utils.utils import load_json, save_json, get_or_create_logger
 

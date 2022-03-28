@@ -238,28 +238,28 @@ class InteractionEnvironment(object):
         utterance_count = 0
         single_turn = {}
 
-        def is_continue():
+        def is_continue(dial_gen):
             if 'sys' not in single_turn and 'user' in single_turn:
                 # end up with system resp
                 return True
             if len(goal_state_dict) == 0:
                 # goal清空后终止
-                # print('goal清空后终止')
+                dial_gen['terminate_reason'] = 'goal清空后终止'
                 return False
             if len(log) >= 20:
                 # 超过20轮终止
-                # print('超过20轮终止')
+                dial_gen['terminate_reason'] = '超过20轮终止'
                 return False
             if system_act and ('[bye]' in system_act or '[thank]' in system_act):
-                # print('thank or bye')
+                dial_gen['terminate_reason'] = 'system said thank or bye'
                 return False
             if user_act and ('[bye]' in user_act or '[thank]' in user_act):
-                # print('thank or bye')
+                dial_gen['terminate_reason'] = 'user said thank or bye'
                 return False
             # 不满足退出条件则继续循环
             return True
 
-        while is_continue(): # 需要判断一个会话是否结束，满足结束条件则需要退出循环
+        while is_continue(dial_gen): # 需要判断一个会话是否结束，满足结束条件则需要退出循环
             if utterance_count & 1 :
                 '''
                 system agent:
@@ -294,6 +294,7 @@ class InteractionEnvironment(object):
                     raise Exception('Domain is empty')
                 db_token = self.bspn_to_db_pointer(bspn_gen, turn_domain)
                 dbpn_gen = self.encode_text(db_token, self.dialog_tokenizer, bos_token=definitions.BOS_DB_TOKEN, eos_token=definitions.EOS_DB_TOKEN)
+                single_turn['dbpn'] = self.dialog_tokenizer.decode(dbpn_gen)
                 dbpn_gen = [self.dialog_tokenizer.pad_token_id] + dbpn_gen
 
                 resp_decoder_input_ids = self.tensorize([dbpn_gen])
@@ -364,6 +365,7 @@ class InteractionEnvironment(object):
                 goal_state_dict = update_goal_states_during_gen(goal_state_dict, user_act_dict, 'user')
 
         dial_gen['log'] = log
+        dial_gen['final_goal_state'] = convert_goal_dict_to_span(goal_state_dict)
         return dial_gen
 
 if __name__ == '__main__':
@@ -372,8 +374,9 @@ if __name__ == '__main__':
     data_dir = './data/MultiWOZ_2.0/'
     interaction = InteractionEnvironment(simulator_path, dialog_sys_path, data_dir)
     dialogs_gen = []
-    for goal in tqdm(interaction.all_goals['test']):
+    count = 0
+    for goal in tqdm(interaction.all_goals['valid']):
         dial_gen = interaction.generate_single_dialog(goal)
         dialogs_gen.append(dial_gen)
     
-    save_json(dialogs_gen, 'generate_example.json')
+    save_json(dialogs_gen, 'generate_example_valid.json')
