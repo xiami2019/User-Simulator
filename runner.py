@@ -656,12 +656,6 @@ class MultiWOZRunner(BaseRunner):
                                                          attention_mask=attention_mask,
                                                          eos_token_id=self.reader.eos_token_id,
                                                          max_length=200)
-                    # encoder_last_hidden_state = belief_outputs.hidden_states
-                    # encoder_hidden_states = belief_outputs.all_hidden_states
-                    # encoder_attentions = belief_outputs.all_attentions
-                    # encoder_outputs = BaseModelOutput(last_hidden_state=encoder_last_hidden_state,
-                    #                                     hidden_states=encoder_hidden_states,
-                    #                                     attentions=encoder_attentions)
 
                 belief_outputs = belief_outputs.cpu().numpy().tolist()
 
@@ -670,13 +664,6 @@ class MultiWOZRunner(BaseRunner):
 
                 for t, turn in enumerate(turn_batch):
                     turn.update(**decoded_belief_outputs[t])
-                    '''
-                    print(self.reader.tokenizer.decode(input_ids[t]))
-                    print(self.reader.tokenizer.decode(turn["bspn_gen"]))
-                    print(turn["span"])
-                    print(self.reader.tokenizer.decode(turn["bspn_gen_with_span"]))
-                    input()
-                    '''
 
                 if self.cfg.task == "e2e":
                     dbpn = []
@@ -712,8 +699,6 @@ class MultiWOZRunner(BaseRunner):
 
                         # T5 use pad_token as start_decoder_token_id
                         dbpn[t] = [self.reader.pad_token_id] + db
-
-                    #print(dbpn)
 
                     # aspn has different length
                     if self.cfg.use_true_curr_aspn:
