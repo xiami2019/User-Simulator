@@ -172,7 +172,7 @@ class MultiWOZIterator(BaseIterator):
 
         decoded_keys = ["user", "resp", "redx", "bspn", "aspn", "dbpn",
                         "bspn_gen", "bspn_gen_with_span",
-                        "dbpn_gen", "aspn_gen", "resp_gen", "user_act", "goal_states"]
+                        "dbpn_gen", "aspn_gen", "resp_gen", "user_aspn", "goal_state"]
         for dial in dial_batch:
             dial_id = dial[0]["dial_id"]
 
@@ -182,7 +182,7 @@ class MultiWOZIterator(BaseIterator):
                 readable_turn = {}
 
                 for k, v in turn.items():
-                    if k == "dial_id":
+                    if k in ["dial_id", "resp_span", "user_span"]:
                         continue
                     elif k in decoded_keys:
                         v = self.reader.tokenizer.decode(

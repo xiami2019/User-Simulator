@@ -26,19 +26,16 @@ import os
 import math
 import argparse
 import logging
-
+import numpy as np
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
-
 from nltk.util import ngrams
-
 from config import CONFIGURATION_FILE_NAME
 from reader import MultiWOZReader
-
 from utils import definitions
 from utils.utils import get_or_create_logger, load_json
 from utils.clean_dataset import clean_slot_values
-
+from mwzeval.metrics import Evaluator
 
 logger = get_or_create_logger(__name__)
 
@@ -104,7 +101,6 @@ class BLEUScorer:
                       for w, p_n in zip(weights, p_ns) if p_n)
         bleu = bp * math.exp(s)
         return bleu * 100
-
 
 class MultiWozEvaluator(object):
     def __init__(self, reader, eval_data_type="test"):
@@ -337,25 +333,7 @@ class MultiWozEvaluator(object):
             # print('\n',dial_id)
             success, match, stats, counts = self._evaluateGeneratedDialogue(
                 dial, goal, reqs, counts, add_auxiliary_task=add_auxiliary_task)
-            '''
-            if success == 0 or match == 0:
-                print("success ", success, "; match ", match)
-                print(goal)
-                for turn in dial:
-                    print("=" * 50 + " " + str(dial_id) + " " + "=" * 50)
-                    print("user               | ", turn["user"])
-                    print("-" * 50 + " " + str(turn["turn_num"]) + " " + "-" * 50)
-                    print("bspn               | ", turn["bspn"])
-                    print("bspn_gen           | ", turn["bspn_gen"])
-                    if "bspn_gen_with_span" in turn:
-                        print("bspn_gen_with_span | ", turn["bspn_gen_with_span"])
-                    print("-" * 100)
-                    print("resp               | ", turn["redx"])
-                    print("resp_gen           | ", turn["resp_gen"])
-                    print("=" * 100)
 
-                input()
-            '''
             successes += success
             matches += match
             dial_num += 1
@@ -658,11 +636,9 @@ class MultiWozEvaluator(object):
                 return bleu
             else:
                 bleu = self.bleu_metric(data)
-            
-            bleu = self.bleu_metric(data)
         
         success, match, req_offer_counts, dial_num = self.context_to_response_eval(
-            data, eval_dial_list=eval_dial_list, add_auxiliary_task=add_auxiliary_task)
+            data, eval_dial_list=eval_dial_list)
 
         if online_eval:
             return success, match
@@ -696,6 +672,134 @@ def convert_results_format(results):
 
     return processed_results
 
+def convert_results_format_to_mwzeval(result):
+    def bspn_to_constraint_dict(bspn):
+        bspn = bspn.split() if isinstance(bspn, str) else bspn
+
+        constraint_dict = OrderedDict()
+        domain, slot = None, None
+        for token in bspn:
+            if token == definitions.EOS_BELIEF_TOKEN:
+                break
+
+            if token.startswith("["):
+                token = token[1:-1]
+
+                if token in definitions.ALL_DOMAINS:
+                    domain = token
+
+                if token.startswith("value_"):
+                    if domain is None:
+                        continue
+
+                    if domain not in constraint_dict:
+                        constraint_dict[domain] = OrderedDict()
+
+                    slot = token.split("_")[1]
+
+                    constraint_dict[domain][slot] = []
+
+            else:
+                try:
+                    if domain is not None and slot is not None:
+                        constraint_dict[domain][slot].append(token)
+                except KeyError:
+                    continue
+
+        for domain, sv_dict in constraint_dict.items():
+            for s, value_tokens in sv_dict.items():
+                constraint_dict[domain][s] = " ".join(value_tokens)
+
+        return constraint_dict
+
+    my_predictions = {}
+    for dial in result:
+        for key in dial.keys():
+            if key.endswith('json'):
+                dial_id = key[:-5]
+
+        my_predictions[dial_id] = []
+        for turn in dial['log']:
+            new_turn = {}
+            new_turn['response'] = turn['resp_gen']
+            new_turn['state'] = bspn_to_constraint_dict(turn['bspn_gen'])
+            user_act = turn['user_act'].split()
+            if len(user_act) == 0 or user_act[0][1:-1] == 'general':
+                turn_domain = ['[general]']
+            elif user_act[0][1:-1] not in definitions.ALL_DOMAINS:
+                raise Exception('Invalid domain token')
+            else:
+                turn_domain = [user_act[0][1:-1]]
+            new_turn['active_domains'] = turn_domain
+            my_predictions[dial_id].append(new_turn)
+
+    return my_predictions
+
+# def convert_results_format_to_mwzeval(result):
+#     def bspn_to_constraint_dict(bspn):
+#         bspn = bspn.split() if isinstance(bspn, str) else bspn
+
+#         constraint_dict = OrderedDict()
+#         domain, slot = None, None
+#         for token in bspn:
+#             if token == definitions.EOS_BELIEF_TOKEN:
+#                 break
+
+#             if token.startswith("["):
+#                 token = token[1:-1]
+
+#                 if token in definitions.ALL_DOMAINS:
+#                     domain = token
+
+#                 if token.startswith("value_"):
+#                     if domain is None:
+#                         continue
+
+#                     if domain not in constraint_dict:
+#                         constraint_dict[domain] = OrderedDict()
+
+#                     slot = token.split("_")[1]
+
+#                     constraint_dict[domain][slot] = []
+
+#             else:
+#                 try:
+#                     if domain is not None and slot is not None:
+#                         constraint_dict[domain][slot].append(token)
+#                 except KeyError:
+#                     continue
+
+#         for domain, sv_dict in constraint_dict.items():
+#             for s, value_tokens in sv_dict.items():
+#                 constraint_dict[domain][s] = " ".join(value_tokens)
+
+#         return constraint_dict
+
+#     my_predictions = {}
+#     for dial_id in result:
+#         if dial_id.endswith('.json'):
+#             dial_id = dial_id[:-5]
+
+#         my_predictions[dial_id] = []
+#         for turn in result[dial_id + '.json']:
+#             new_turn = {}
+#             turn['resp_gen'] = turn['resp_gen'].split()[1:-1]
+#             turn['resp_gen'] = ' '.join(turn['resp_gen'])
+#             new_turn['response'] = turn['resp_gen']
+
+#             new_turn['state'] = bspn_to_constraint_dict(turn['bspn_gen'])
+#             # user_act = turn['user_act'].split()
+#             # if len(user_act) == 0 or user_act[0][1:-1] == 'general':
+#             #     turn_domain = ['[general]']
+#             # elif user_act[0][1:-1] not in definitions.ALL_DOMAINS:
+#             #     raise Exception('Invalid domain token')
+#             # else:
+#             #     turn_domain = [user_act[0][1:-1]]
+#             # new_turn['active_domains'] = turn_domain
+#             new_turn['active_domains'] = turn['turn_domain']
+#             my_predictions[dial_id].append(new_turn)
+
+#     return my_predictions
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Argument for evaluation")
@@ -713,9 +817,11 @@ if __name__ == "__main__":
 
     cfg = SimpleNamespace(**load_json(cfg_path))
 
-    data = load_json(args.output_result_path)
+    original_data = load_json(args.output_result_path)
     if args.eval_type == 'online':
-        data = convert_results_format(data)
+        data = convert_results_format(original_data)
+        # data = original_data
+        mwzeval_data = convert_results_format_to_mwzeval(original_data)
 
     dial_by_domain = load_json("data/MultiWOZ_2.0/dial_by_domain.json")
 
@@ -731,6 +837,7 @@ if __name__ == "__main__":
     reader = MultiWOZReader(cfg, cfg.version)
 
     evaluator = MultiWozEvaluator(reader, args.data_type)
+    evaluator2 = Evaluator(bleu=False, success=True, richness=False)
 
     if cfg.task == "e2e":
         if args.eval_type == 'offline':
@@ -744,7 +851,9 @@ if __name__ == "__main__":
         elif args.eval_type == 'online':
             success, match = evaluator.e2e_eval(
                 data, eval_dial_list=eval_dial_list, add_auxiliary_task=cfg.add_auxiliary_task, online_eval=True)
-            logger.info('Online Evaluation: match: %2.2f; success: %2.2f;', match, success)
+            results = evaluator2.evaluate(mwzeval_data)
+            logger.info('Online Evaluation V1: match: %2.2f; success: %2.2f;', match, success)
+            logger.info('Online Evaluation V2: match: %2.2f; success: %2.2f;', results['success']['inform']['total'], results['success']['success']['total'])
         else:
             raise Exception('Invalid evaluation type.')
     else:

@@ -117,13 +117,13 @@ def convert_generate_action_span_to_dict(act_span):
                 current_intent = temp_token
                 if current_domain:
                     act_dict[current_domain][current_intent] = set()
-                else:
-                    raise Exception("It's an intent without a domain token.")
+                # else:
+                #     raise Exception("It's an intent without a domain token.")
         else: # slot name
             if current_domain and current_intent:
                 act_dict[current_domain][current_intent].add(single_token)
-            else:
-                raise Exception("An domain token and an intent token are expected.")
+            # else:
+            #     raise Exception("An domain token and an intent token are expected.")
 
     for domain in act_dict:
         for intent in act_dict[domain]:
@@ -188,7 +188,7 @@ def update_goal_states_during_gen(goal_states, actions, type):
 
                         if len(goal_states[domain][intent]) == 0: # clear empty field
                             new_goal_states[domain].pop(intent)
-                            if len(new_goal_states[domain]):
+                            if len(new_goal_states[domain]) == 0:
                                 new_goal_states.pop(domain)
                             continue
                         
@@ -220,7 +220,7 @@ def update_goal_states_during_gen(goal_states, actions, type):
                             # clear empty intents
                             if len(goal_states[domain][goal_intent]) == 0:
                                 new_goal_states[domain].pop(goal_intent)
-                                if len(new_goal_states[domain]):
+                                if len(new_goal_states[domain]) == 0:
                                     new_goal_states.pop(domain)
                                 continue
 
@@ -243,7 +243,7 @@ def update_goal_states_during_gen(goal_states, actions, type):
                         if 'reqt' in new_goal_states[domain] and len(new_goal_states[domain]['reqt']) == 0:
                             new_goal_states[domain].pop('reqt')
 
-            if len(new_goal_states[domain]) == 0:
+            if domain in new_goal_states and len(new_goal_states[domain]) == 0:
                 new_goal_states.pop(domain)
     else:
         raise Exception('Invalid action type!')
@@ -286,7 +286,7 @@ def update_goal_states(goal_states, actions, type):
 
                             if len(goal_states[domain][intent]) == 0:
                                 new_goal_states[domain].pop(intent)
-                                if len(new_goal_states[domain]):
+                                if len(new_goal_states[domain]) == 0:
                                     new_goal_states.pop(domain)
                                 continue
                             
@@ -324,7 +324,7 @@ def update_goal_states(goal_states, actions, type):
                                 # clear empty intents
                                 if len(goal_states[domain][goal_intent]) == 0:
                                     new_goal_states[domain].pop(goal_intent)
-                                    if len(new_goal_states[domain]):
+                                    if len(new_goal_states[domain]) == 0:
                                         new_goal_states.pop(domain)
                                     continue
 
@@ -412,33 +412,47 @@ def convert_goal_dict_to_span(goal_dict):
 
     return goal_span
 
-def split_user_act_and_resp(tokenizer, model_output):
-    if model_output[0] == tokenizer.pad_token:
+def split_user_act_and_resp(tokenizer, model_output, model_prob=None):
+    if model_output[0] == tokenizer.pad_token_id:
         model_output = model_output[1:]
-    if model_output[-1] == tokenizer.eos_token:
+    if model_output[-1] == tokenizer.eos_token_id:
+        if model_prob is not None:
+            model_prob = model_prob[:-1]
         model_output = model_output[:-1]
 
     # user aspn
-    bos_user_act_token = definitions.BOS_USER_ACTION_TOKEN
-    eos_user_act_token = definitions.EOS_USER_ACTION_TOKEN
-    if bos_user_act_token in model_output and eos_user_act_token in model_output:
-        bos_user_act_idx = model_output.index(bos_user_act_token)
-        eos_user_act_idx = model_output.index(eos_user_act_token)
+    aspn_prob = None
+    bos_user_act_token_id = tokenizer.convert_tokens_to_ids(definitions.BOS_USER_ACTION_TOKEN)
+    eos_user_act_token_id = tokenizer.convert_tokens_to_ids(definitions.EOS_USER_ACTION_TOKEN)
+    if bos_user_act_token_id in model_output and eos_user_act_token_id in model_output:
+        bos_user_act_idx = model_output.index(bos_user_act_token_id)
+        eos_user_act_idx = model_output.index(eos_user_act_token_id)
         user_aspn = model_output[bos_user_act_idx:eos_user_act_idx + 1]
+        if model_prob is not None:
+            aspn_prob = model_prob[bos_user_act_idx:eos_user_act_idx + 1]
     else:
-        user_aspn = [bos_user_act_token, eos_user_act_token]
+        user_aspn = [bos_user_act_token_id, eos_user_act_token_id]
+        if model_prob is not None:
+            aspn_prob = model_prob[:2]
+            aspn_prob = 0 * aspn_prob
 
     # user utterance
-    bos_user_resp_token = definitions.BOS_USER_TOKEN
-    eos_user_resp_token = definitions.EOS_USER_TOKEN
-    if bos_user_resp_token in model_output and eos_user_resp_token in model_output:
-        bos_user_resp_idx = model_output.index(bos_user_resp_token)
-        eos_user_resp_idx = model_output.index(eos_user_resp_token)
+    utter_prob = None
+    bos_user_resp_token_id = tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
+    eos_user_resp_token_id = tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
+    if bos_user_resp_token_id in model_output and eos_user_resp_token_id in model_output:
+        bos_user_resp_idx = model_output.index(bos_user_resp_token_id)
+        eos_user_resp_idx = model_output.index(eos_user_resp_token_id)
         user_utterance = model_output[bos_user_resp_idx:eos_user_resp_idx + 1]
+        if model_prob is not None:
+            utter_prob = model_prob[bos_user_resp_idx:eos_user_resp_idx + 1]
     else:
-        user_utterance = [bos_user_resp_token, eos_user_resp_token]
+        user_utterance = [bos_user_resp_token_id, eos_user_resp_token_id]
+        if model_prob is not None:
+            utter_prob = model_prob[:2]
+            utter_prob = 0 * utter_prob
 
-    return user_aspn, user_utterance
+    return user_aspn, user_utterance, aspn_prob, utter_prob
 
 if __name__ == '__main__':
     value = 'Saint John \'s College'

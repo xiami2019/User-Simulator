@@ -348,7 +348,7 @@ class MultiWOZRunner(BaseRunner):
 
                     lr = scheduler.get_last_lr()[0]
 
-                    if reporter is not None:
+                    if reporter is not None and self.cfg.log_frequency > 0:
                         reporter.step(start_time, lr, step_outputs)
                 pbar.update(1)
 
@@ -709,7 +709,7 @@ class MultiWOZRunner(BaseRunner):
 
                             with torch.no_grad():
                                 resp_outputs = self.model.generate(
-                                    encoder_outputs=encoder_outputs,
+                                    # encoder_outputs=encoder_outputs,
                                     attention_mask=attention_mask[t].unsqueeze(0),
                                     decoder_input_ids=resp_decoder_input_ids,
                                     eos_token_id=self.reader.eos_token_id,
@@ -858,7 +858,7 @@ class MultiWOZRunner(BaseRunner):
 
                 for t, turn in enumerate(turn_batch):
                     output_tokens = self.reader.tokenizer.decode(model_outputs[t]).split(' ')
-                    user_act, user_utterance = split_user_act_and_resp(self.reader.tokenizer, output_tokens)
+                    user_act, user_utterance, _, _ = split_user_act_and_resp(self.reader.tokenizer, output_tokens)
                     user_act = ' '.join(user_act[1:-1])
                     user_utterance = ' '.join(user_utterance[1:-1])
                     turn['user_gen'] = user_utterance
