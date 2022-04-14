@@ -25,7 +25,9 @@
             "console": "integratedTerminal",
             "args": [
                 "-output_result_path",
-                "generate_example_test_t5_small_rl_v2.json",
+                "generate_example_test_t5_small_rl_v4.json",
+                // "generate_example_test_t5_small_rl_v3.json",
+                // "generate_example_test_t5_small_rl_v2.json",
                 // "generate_example_test_t5_small_rl.json",
                 // "generate_example_test_t5small.json",
                 // "generate_example_offline.json",

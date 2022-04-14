@@ -28,13 +28,14 @@ def get_config():
     parser.add_argument("-rl_dial_one_epoch", type=int, default=200)
     parser.add_argument("-rl_batch_size", type=int, default=1)
     parser.add_argument("-epochs", type=int, default=20)
-    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch11')
-    parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch12')
+    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_v4_epoch_3')
+    parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_v4_epoch_3')
     parser.add_argument("-data_dir", type=str, default='./data/MultiWOZ_2.0/')
     parser.add_argument("-model_dir", type=str, default="simulator_t5_small")
     parser.add_argument("-discount_factor", type=float, default=0.99)
     parser.add_argument('-rl_lr', type=float, default=0.0001, help='learning rate for reinforcement learning')
     parser.add_argument('-grad_clip', type=float, default=5)
+    parser.add_argument("-seed", type=int, default=42)
     parser.add_argument('-do_rl_training', action="store_true")
     args = parser.parse_args()
 
@@ -648,10 +649,10 @@ class InteractionEnvironment(object):
                 best_success_epoch = epoch
                 simulator_dir = os.path.dirname(self.cfg.simulator_path)
                 dialog_dir = os.path.dirname(self.cfg.dialog_sys_path)
-                self.simulator_model.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_epoch_{}'.format(epoch)))
-                self.simulator_tokenizer.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_epoch_{}'.format(epoch)))
-                self.dialog_model.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_epoch_{}'.format(epoch)))
-                self.dialog_tokenizer.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_epoch_{}'.format(epoch)))
+                self.simulator_model.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_v4_epoch_{}'.format(epoch)))
+                self.simulator_tokenizer.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_v4_epoch_{}'.format(epoch)))
+                self.dialog_model.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_v4_epoch_{}'.format(epoch)))
+                self.dialog_tokenizer.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_v4_epoch_{}'.format(epoch)))
             
             logger.info('Epoch: {}; Success rate: {}; Inform rate: {}; Best success: {}; Best epoch: {}'.format(epoch, success, match, best_success, best_success_epoch))
 
@@ -660,6 +661,14 @@ if __name__ == '__main__':
     interaction = InteractionEnvironment(cfg)
     dialogs_gen = []
     if cfg.do_rl_training:
+        # random seeds
+        random.seed(cfg.seed)
+        np.random.seed(cfg.seed)
+        torch.manual_seed(cfg.seed)
+        torch.cuda.manual_seed_all(cfg.seed)
+
+        logger.info("Set random seed to %d", cfg.seed)
+
         interaction.train_RL()
     else:
         count = 0
@@ -667,4 +676,4 @@ if __name__ == '__main__':
             dial_gen = interaction.generate_single_dialog(goal)
             dialogs_gen.append(dial_gen)
     
-        save_json(dialogs_gen, 'generate_example_test_t5_small_rl_v3.json')
+        save_json(dialogs_gen, 'generate_example_test_t5_small_rl_v4.json')

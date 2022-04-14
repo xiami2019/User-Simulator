@@ -39,8 +39,8 @@ class Preprocessor(object):
             self.do_tokenize_text = True
 
         self.mapping_pair = self.load_mapping_pair()
-        # self.get_db_values()
-        # self.preprocess_db()
+        self.get_db_values()
+        self.preprocess_db()
         self.db = MultiWozDB(os.path.join(self.data_dir, "db"))
         self.data = load_json(os.path.join(self.data_dir, data_name))
 

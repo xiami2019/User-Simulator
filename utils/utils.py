@@ -281,7 +281,7 @@ def update_goal_states(goal_states, actions, type):
                             slot_name =  map_act_tokens_to_inform_goal_tokens[slot_name]
 
                         for intent in ['info', 'fail_info', 'book', 'fail_book']:
-                            if intent not in goal_states[domain]:
+                            if intent not in goal_states[domain] or (domain in new_goal_states and intent not in new_goal_states[domain]):
                                 continue
 
                             if len(goal_states[domain][intent]) == 0:
@@ -318,7 +318,7 @@ def update_goal_states(goal_states, actions, type):
 
                             # update inform slot in goal
                             for goal_intent in ['info', 'fail_info', 'book', 'fail_book']:
-                                if goal_intent not in goal_states[domain] or goal_intent not in new_goal_states[domain]:
+                                if goal_intent not in goal_states[domain] or (domain in new_goal_states and goal_intent not in new_goal_states[domain]):
                                     continue
 
                                 # clear empty intents
