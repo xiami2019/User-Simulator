@@ -3,3 +3,7 @@ data.zip
 simulator_t5*
 dialogue_t5*
 generate_example*
+vscode
+__pycache__
+gpt_lm_model*
+dialog_t5_*

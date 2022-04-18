@@ -18,6 +18,28 @@
             }
         },
         {
+            "name": "Python: train_lm.py",
+            "type": "python",
+            "request": "launch",
+            "program": "train_lm.py",
+            "console": "integratedTerminal",
+            "args": [],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3",
+            }
+        },
+        {
+            "name": "Python: test.py",
+            "type": "python",
+            "request": "launch",
+            "program": "test.py",
+            "console": "integratedTerminal",
+            "args": [],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1",
+            }
+        },
+        {
             "name": "Python: evaluator.py",
             "type": "python",
             "request": "launch",

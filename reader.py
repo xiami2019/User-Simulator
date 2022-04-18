@@ -365,22 +365,14 @@ class BaseReader(object):
 
             save_pickle(self.data, encoded_data_path)
 
-        span_tokens = [self.pad_token, "O"]
-        for slot in definitions.EXTRACTIVE_SLOT:
-            #span_tokens.append("B-{}".format(slot))
-            #span_tokens.append("I-{}".format(slot))
-            span_tokens.append(slot)
-
-        self.span_tokens = span_tokens
-
     def get_data_dir(self):
         raise NotImplementedError
 
     def init_tokenizer(self):
         if self.cfg.ckpt is not None:
-            tokenizer = T5Tokenizer.from_pretrained(self.cfg.ckpt)
+            return T5Tokenizer.from_pretrained(self.cfg.ckpt)
         elif self.cfg.train_from is not None:
-            tokenizer = T5Tokenizer.from_pretrained(self.cfg.train_from)
+            return T5Tokenizer.from_pretrained(self.cfg.train_from)
         else:
             tokenizer = T5Tokenizer.from_pretrained(self.cfg.backbone)
 

@@ -35,7 +35,7 @@ def add_config(parser):
     group.add_argument("-backbone", type=str, default="t5-base",
                        choices=["t5-small", "t5-base", "t5-large"])
     group.add_argument("-version", type=str, default="2.1",
-                       choices=["2.0", "2.1", "2.4"])
+                       choices=["2.0", "2.1"])
     group.add_argument("-task", type=str, default="e2e",
                        choices=["dst", "e2e"])
     group.add_argument("-add_auxiliary_task", action="store_true")
