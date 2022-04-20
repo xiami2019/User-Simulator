@@ -23,9 +23,38 @@
             "request": "launch",
             "program": "train_lm.py",
             "console": "integratedTerminal",
-            "args": [],
+            "args": [
+                "-model_dir",
+                "gpt_lm_model_lr_1e_4_session",
+                "-learning_rate",
+                "1e-4",
+                "-ppl_level",
+                "session",
+                "-batch_size",
+                "4",
+            ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "3",
+                "CUDA_VISIBLE_DEVICES": "7",
+            }
+        },
+        {
+            "name": "Python: ppl",
+            "type": "python",
+            "request": "launch",
+            "program": "train_lm.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-ckpt",
+                "./gpt_lm_model_lr_1e_4_sentence/ckpt-epoch6",
+                "-run_type",
+                "predict",
+                "-ppl_level",
+                "sentence",
+                "-text_file",
+                "dialog_t5_small_offline_ep11_onlineformat.json",
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "7",
             }
         },
         {

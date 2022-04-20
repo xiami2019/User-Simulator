@@ -11,6 +11,7 @@
 '''
 import os
 import glob
+import math
 import torch
 import random
 import shutil
@@ -44,6 +45,8 @@ def get_config():
     parser.add_argument('-model_dir', type=str, default='gpt_lm_model')
     parser.add_argument('-no_learning_rate_decay', action="store_true")
     parser.add_argument('-text_file', type=str, default=None)
+    parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session'])
+    parser.add_argument('-early_stopping', type=int, default=5)
 
     return parser.parse_args()
 
@@ -134,6 +137,7 @@ class LMRunner(object):
         optimizer, scheduler = self.get_optimizer_and_scheduler(num_training_steps_per_epoch)
         best_ppl = float('inf')
         best_epoch = 0
+        stop_count = 0
 
         for epoch in range(1, self.cfg.epochs + 1):
             self.model.train()
@@ -163,14 +167,23 @@ class LMRunner(object):
 
             current_ppl, eval_loss = self.validation('dev')
             if current_ppl < best_ppl:
+                stop_count = 0
                 best_ppl = current_ppl
                 best_epoch = epoch
                 self.save_model(epoch)
+            else:
+                stop_count += 1
 
             logger.info('Done {}/{} epoch: avg training loss: {:.6}; validation loss:{:.6}'.format(epoch, self.cfg.epochs, training_avg_loss / num_training_steps_per_epoch, eval_loss))
             logger.info('Current validation PPL: {:.3}; Best PPL is {:.3} at epoch {};'.format(current_ppl, best_ppl, best_epoch))            
 
+            if stop_count >= self.cfg.early_stopping:
+                logger.info('Early stopped. Stop count is {}'.format(self.cfg.early_stopping))
+                break
+
     def validation(self, type):
+        self.model.eval()
+
         valid_dataset = MultiwozDataset(self.reader.tokenizer, self.reader.data[type], type)
         collate_fn = Collate_Fn(self.reader.tokenizer.eos_token_id)
         valid_dataLodaer = DataLoader(dataset=valid_dataset, shuffle=False, collate_fn=collate_fn, num_workers=4, batch_size=self.cfg.batch_size)
@@ -191,22 +204,18 @@ class LMRunner(object):
             
             target_len = attention_mask.sum(dim=1)
             logits = model_outputs.logits
-            logits_without_padding = [logits[i][:int(target_len[i])] for i in range(logits.shape[0])]
-            logits_without_padding = torch.cat(logits_without_padding, dim=0)
-            labels_without_padding = [input_ids[i][:int(target_len[i])] for i in range(input_ids.shape[0])]
-            labels_without_padding = torch.cat(labels_without_padding, dim=0)
+            logits_without_padding = [logits[i][:int(target_len[i])+1][:-1] for i in range(logits.shape[0])]
+            labels_without_padding = [input_ids[i][:int(target_len[i])+1][1:] for i in range(input_ids.shape[0])]
 
-            shift_logits = logits_without_padding[..., :-1, :].contiguous()
-            shift_labels = labels_without_padding[..., 1:].contiguous()
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss_fct = CrossEntropyLoss(reduction='mean')
 
-            all_target_len = target_len.sum()
-            neg_log_likelihood = loss.item() * all_target_len
-            nlls.append(neg_log_likelihood)
-            total_token += all_target_len
-            
-        ppl = torch.exp(sum(nlls) / total_token)
+            for i in range(logits.shape[0]):
+                loss = loss_fct(logits_without_padding[i], labels_without_padding[i])
+                neg_log_likelihood = loss.item() * (target_len[i] + 1)
+                nlls.append(neg_log_likelihood)
+                total_token += target_len[i] + 1
+
+        ppl = math.exp(sum(nlls) / total_token)
         return ppl, eval_loss / len(valid_dataLodaer)
 
 def main():

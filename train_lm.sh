@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python train_lm.py -model_dir gpt_lm_model_lr_1e_4 -learning_rate 1e-4

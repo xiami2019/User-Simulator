@@ -21,15 +21,19 @@ class lm_reader(object):
         self.data_dir = os.path.join("data", "MultiWOZ_{}".format(self.cfg.version), "processed")
     
         if self.cfg.text_file is None:
-            encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm.pkl")    
+            if self.cfg.ppl_level == 'sentence':
+                encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence.pkl")   
+            elif self.cfg.ppl_level == 'session':
+                encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_session.pkl")   
+
             if os.path.exists(encoded_data_path):
                 logger.info("Load encoded data from {}".format(encoded_data_path))
                 self.data = load_pickle(encoded_data_path)
             else:
                 logger.info("Encode data and save to {}".format(encoded_data_path))
-                train = self.encode_data('train')
-                dev = self.encode_data('dev')
-                test = self.encode_data('test')
+                train = self.encode_data('train', self.cfg.ppl_level)
+                dev = self.encode_data('dev', self.cfg.ppl_level)
+                test = self.encode_data('test', self.cfg.ppl_level)
 
                 self.data = {'train': train, 'dev': dev, 'test': test}
                 save_pickle(self.data, encoded_data_path)
@@ -42,16 +46,35 @@ class lm_reader(object):
         text_data = load_json(self.cfg.text_file)
         encoded_data = []
 
-        for dial in tqdm(text_data):
-            for turn in dial['log']:
-                user_idx = self.tokenizer.encode(turn['user']) + [self.tokenizer.eos_token_id]
-                resp_idx = self.tokenizer.encode(turn['sys']) + [self.tokenizer.eos_token_id]
-                encoded_data.append(user_idx)
-                encoded_data.append(resp_idx)
+        if self.cfg.ppl_level == 'sentence':
+            for dial in tqdm(text_data):
+                for turn in dial['log']:
+                    user_idx = self.tokenizer.encode(turn['user']) + [self.tokenizer.eos_token_id]
+                    resp_idx = self.tokenizer.encode(turn['sys']) + [self.tokenizer.eos_token_id]
+                    if len(user_idx) > 1:
+                        encoded_data.append(user_idx)
+                    if len(resp_idx) > 1:
+                        encoded_data.append(resp_idx)
+        elif self.cfg.ppl_level == 'session':
+            bos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
+            eos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
+            bos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_RESP_TOKEN)
+            eos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
+
+            for dial in tqdm(text_data):
+                single_dial_ids = []
+                for turn in dial['log']:
+                    user_idx = self.tokenizer.encode(turn['user'])
+                    resp_idx = self.tokenizer.encode(turn['sys'])
+                    single_dial_ids += [bos_user_id] + user_idx + [eos_user_id]
+                    single_dial_ids += [bos_resp_id] + resp_idx + [eos_resp_id]
+                encoded_data.append(single_dial_ids + [self.tokenizer.eos_token_id])
+
         return encoded_data
 
     def init_tokenizer(self):
         if self.cfg.ckpt is not None:
+            logger.info('Load tokenizer from {}'.format(self.cfg.ckpt))
             return GPT2Tokenizer.from_pretrained(self.cfg.ckpt)
         else:
             tokenizer = GPT2Tokenizer.from_pretrained(self.cfg.backbone)
@@ -88,16 +111,35 @@ class lm_reader(object):
 
         return tokenizer
 
-    def encode_data(self, data_type):
+    def encode_data(self, data_type, data_level):
         data = load_json(os.path.join(self.data_dir, "{}_data.json".format(data_type)))
 
         encoded_data = []
-        for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
-            for idx, t in enumerate(dial['log']):
-                user_idx = self.tokenizer.encode(t['user']) + [self.tokenizer.eos_token_id]
-                resp_idx = self.tokenizer.encode(t['resp']) + [self.tokenizer.eos_token_id]
-                encoded_data.append(user_idx)
-                encoded_data.append(resp_idx)
+        max_len = 0
+        if data_level == 'sentence':
+            for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
+                for idx, t in enumerate(dial['log']):
+                    user_idx = self.tokenizer.encode(t['user']) + [self.tokenizer.eos_token_id]
+                    resp_idx = self.tokenizer.encode(t['resp']) + [self.tokenizer.eos_token_id]
+                    encoded_data.append(user_idx)
+                    encoded_data.append(resp_idx)
+        elif data_level == 'session':
+            bos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
+            eos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
+            bos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_RESP_TOKEN)
+            eos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
+
+            max_len = 0
+            for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
+                single_dial_ids = []
+                for idx, t in enumerate(dial['log']):
+                    user_idx = self.tokenizer.encode(t['user'])
+                    resp_idx = self.tokenizer.encode(t['resp'])
+                    single_dial_ids += [bos_user_id] + user_idx + [eos_user_id]
+                    single_dial_ids += [bos_resp_id] + resp_idx + [eos_resp_id]
+                encoded_data.append(single_dial_ids + [self.tokenizer.eos_token_id])
+                max_len = max(max_len, len(single_dial_ids))
+            logger.info('Max Len is {}'.format(max_len))
 
         return encoded_data
 
