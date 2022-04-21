@@ -58,6 +58,28 @@
             }
         },
         {
+            "name": "Python: nsp",
+            "type": "python",
+            "request": "launch",
+            "program": "train_lm.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-model_dir",
+                "bert_nsp_model_test",
+                "-learning_rate",
+                "1e-4",
+                "-task",
+                "nsp",
+                "-backbone",
+                "bert-base-uncased",
+                "-batch_size",
+                "32"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5",
+            }
+        },
+        {
             "name": "Python: test.py",
             "type": "python",
             "request": "launch",
