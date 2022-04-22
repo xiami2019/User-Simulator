@@ -1,18 +1,16 @@
-# Using an user simulator interacting with a dialogue system to generate dialogue session
-# input: user's goal, database, user simulator, dialogue system
-# output: a session
 import os
 import math
-import time
 import torch
 import random
 import argparse
 import numpy as np
+import torch.nn as nn
 from tqdm import tqdm
 from itertools import chain
 from collections import OrderedDict
 from types import SimpleNamespace
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from torch.nn.utils.rnn import pad_sequence
+from transformers import T5ForConditionalGeneration, T5Tokenizer, GPT2LMHeadModel, GPT2Tokenizer, BertForNextSentencePrediction, BertTokenizer
 from utils.utils import load_json, save_json, convert_goal_dict_to_span, convert_generate_action_span_to_dict, \
 update_goal_states_during_gen, get_or_create_logger, split_user_act_and_resp
 from utils import definitions
@@ -22,14 +20,22 @@ from reader import MultiWOZReader
 
 logger = get_or_create_logger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device2 = torch.device('cpu')
+# if torch.cuda.device_count() == 2:
+#     device2 = torch.device("cuda", 1)
+'''
+岁月难得沉默
+秋风厌倦漂泊
+夕阳赖着不走挂在墙头舍不得我
+'''
 
 def get_config():
     parser = argparse.ArgumentParser(description='RL config')
     parser.add_argument("-rl_dial_one_epoch", type=int, default=200)
     parser.add_argument("-rl_batch_size", type=int, default=1)
     parser.add_argument("-epochs", type=int, default=20)
-    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_v4_epoch_3')
-    parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_v4_epoch_3')
+    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch12')
+    parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch11')
     parser.add_argument("-data_dir", type=str, default='./data/MultiWOZ_2.0/')
     parser.add_argument("-model_dir", type=str, default="simulator_t5_small")
     parser.add_argument("-discount_factor", type=float, default=0.99)
@@ -37,6 +43,10 @@ def get_config():
     parser.add_argument('-grad_clip', type=float, default=5)
     parser.add_argument("-seed", type=int, default=42)
     parser.add_argument('-do_rl_training', action="store_true")
+    parser.add_argument('-use_ppl_as_reward', action="store_true")
+    parser.add_argument('-ppl_ckpt', type=str, default='./gpt_lm_model_lr_1e_4_sentence/ckpt-epoch6')
+    parser.add_argument('-use_nsp_score_as_reward', action="store_true")
+    parser.add_argument('-nsp_ckpt', type=str, default='./bert_nsp_model_lr_1e_5_1/ckpt-epoch9')
     args = parser.parse_args()
 
     return args
@@ -405,10 +415,6 @@ class InteractionEnvironment(object):
                 system_act, system_resp, sys_act_prob, sys_resp_prob = self.split_system_act_and_resp(resp_outputs[0])
                 
                 if with_logprob:
-                    # assert len(system_act) == len(sys_act_prob)
-                    # assert len(system_resp) == len(sys_resp_prob)
-                    # single_turn['resp_prob'] = sys_resp_prob
-                    # single_turn['sys_act_prob'] = sys_act_prob
                     single_turn['sys_act_resp_prob'] = resp_prob
                 
                 system_act = self.dialog_tokenizer.decode(system_act).split()
@@ -464,11 +470,8 @@ class InteractionEnvironment(object):
                 user_act, user_utterance, user_act_prob, _ = split_user_act_and_resp(self.simulator_tokenizer, user_utterance_output[0])
                 
                 if with_logprob:
-                    # assert len(user_act) == len(user_act_prob)
-                    # assert len(user_utterance) == len(user_utterance_prob)
-                    # single_turn['user_act_prob'] = user_act_prob
-                    # single_turn['user_prob'] = user_utterance_prob
                     single_turn['user_act_resp_prob'] = user_utterance_prob
+
 
                 user_act = self.simulator_tokenizer.decode(user_act).split(' ')
                 user_utterance = self.simulator_tokenizer.decode(user_utterance).split(' ')
@@ -521,13 +524,11 @@ class InteractionEnvironment(object):
             for turn in gen_dial:
                 turn_rl_loss = 0
                 if agent == 'sys':
-                    # prob = torch.cat((turn['bspn_prob'], turn['sys_act_prob'], turn['resp_prob']))
                     prob = torch.cat((turn['bspn_prob'], turn['sys_act_resp_prob']))
                     assert prob.shape[0] == len(turn['sys_rewards'])
                     for i in range(len(prob)):
                         turn_rl_loss += -1 * torch.log(prob[i]) * turn['sys_rewards'][i]
                 elif agent == 'usr':
-                    # prob = torch.cat((turn['user_prob'], turn['user_act_prob']))
                     prob = turn['user_act_resp_prob']
                     assert prob.shape[0] == len(turn['usr_rewards'])
                     for i in range(len(prob)):
@@ -536,7 +537,6 @@ class InteractionEnvironment(object):
                 turn_num += 1
 
         return rl_loss / turn_num
-
     
     def get_success_reward(self, gen_dial_batch, evaluator):
         '''
@@ -561,9 +561,6 @@ class InteractionEnvironment(object):
                 usr_rewards = []
                 sys_rewards = []
 
-                # usr_len = len(turn['user_prob']) + len(turn['user_act_prob'])
-                # sys_len = len(turn['bspn_prob']) + len(turn['sys_act_prob']) + len(turn['resp_prob'])
-
                 usr_len = len(turn['user_act_resp_prob'])
                 sys_len = len(turn['bspn_prob']) + len(turn['sys_act_resp_prob'])
 
@@ -579,6 +576,124 @@ class InteractionEnvironment(object):
                 turn['sys_rewards'] = sys_rewards
 
         return np.mean(batch_rewards)
+
+    def get_ppl_reward(self, gen_dial_batch, evaluator, tokenizer):
+        '''
+        add user ppl rewards to turn['usr_rewards']
+        add system ppl rewards to turn['sys_rewards']
+        '''
+        all_rewards = 0
+        count_num = 0
+        for dial_id in gen_dial_batch:
+            for turn in gen_dial_batch[dial_id]:
+                user_ids = torch.tensor([tokenizer.encode(turn['user']) + [tokenizer.eos_token_id]])
+                resp_ids = torch.tensor([tokenizer.encode(turn['resp_gen']) + [tokenizer.eos_token_id]])
+                user_ids = user_ids.to(device2)
+                resp_ids = resp_ids.to(device2)
+
+                with torch.no_grad():
+                    user_outputs = evaluator(
+                        input_ids=user_ids,
+                        labels=user_ids,
+                    )
+                    resp_outputs = evaluator(
+                        input_ids=resp_ids,
+                        labels=resp_ids,
+                    )
+
+                user_loss = user_outputs.loss.cpu()
+                resp_loss = resp_outputs.loss.cpu()
+
+                user_ppl = torch.exp(user_loss)
+                resp_ppl = torch.exp(resp_loss)
+                user_reward = 1 / (user_ppl ** 1)
+                resp_reward = 1 / (resp_ppl ** 1)
+                all_rewards += user_reward + resp_reward
+                count_num += 2
+
+                usr_rewards = []
+                sys_rewards = []
+
+                usr_len = len(turn['user_act_resp_prob'])
+                sys_len = len(turn['bspn_prob']) + len(turn['sys_act_resp_prob'])
+
+                for _ in range(usr_len):
+                    usr_rewards.insert(0, user_reward)
+                    user_reward = user_reward * self.cfg.discount_factor
+                for _ in range(sys_len):
+                    sys_rewards.insert(0, resp_reward)
+                    resp_reward = resp_reward * self.cfg.discount_factor
+
+                for i in range(len(turn['usr_rewards'])):
+                    turn['usr_rewards'][i] += usr_rewards[i]
+                for i in range(len(turn['sys_rewards'])):
+                    turn['sys_rewards'][i] += sys_rewards[i]
+        
+        return all_rewards / count_num
+
+    def get_nsp_score_reward(self, gen_dial_batch, evaluator, tokenizer):
+        '''
+        add user nsp rewards to turn['usr_rewards']
+        add system nsp rewards to turn['sys_rewards']
+        '''
+        all_rewards = 0
+        count_num = 0
+        for dial_id in gen_dial_batch:
+            single_dial = []
+            for turn in gen_dial_batch[dial_id]:
+                user_ids = tokenizer.encode(turn['user'])[1:-1]
+                resp_ids = tokenizer.encode((turn['resp_gen']))[1:-1]
+                single_dial.append(user_ids)
+                single_dial.append(resp_ids)
+
+            input_ids = []
+            label_ids = []
+            for i in range(1, len(single_dial)):
+                input_ids.append(torch.tensor([tokenizer.cls_token_id] + single_dial[i - 1] + [tokenizer.sep_token_id] + single_dial[i]))
+                label_ids.append(0)
+
+            input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+            label_ids = torch.tensor(label_ids)
+            input_ids = input_ids.to(device2)
+            label_ids = input_ids.to(device2)
+            attention_mask = torch.where(input_ids == tokenizer.pad_token_id, 0, 1)
+
+            with torch.no_grad():
+                model_outputs = evaluator(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    label=label_ids,
+                )
+            softmax = nn.Softmax(dim=1)
+            logits = model_outputs.logits
+            logits = softmax(logits)
+            nsp_score = logits[:, 0].sum()
+            avg_nsp_score = nsp_score / input_ids.shape[0]
+
+            for turn in gen_dial_batch[dial_id]:
+                user_reward, resp_reward = avg_nsp_score, avg_nsp_score
+                all_rewards += user_reward + resp_reward
+                count_num +=  2
+                usr_rewards = []
+                sys_rewards = []
+
+                usr_len = len(turn['user_act_resp_prob'])
+                sys_len = len(turn['bspn_prob']) + len(turn['sys_act_resp_prob'])
+
+                for _ in range(usr_len):
+                    usr_rewards.insert(0, user_reward)
+                    user_reward = user_reward * self.cfg.discount_factor
+                for _ in range(sys_len):
+                    sys_rewards.insert(0, resp_reward)
+                    resp_reward = resp_reward * self.cfg.discount_factor
+
+                for i in range(len(turn['usr_rewards'])):
+                    turn['usr_rewards'][i] += usr_rewards[i] * 0.5
+                for i in range(len(turn['sys_rewards'])):
+                    turn['sys_rewards'][i] += sys_rewards[i] * 0.5
+
+        return all_rewards / count_num
+        
 
     def rl_validation(self, evaluator):
         dialogs_gen = []
@@ -602,6 +717,22 @@ class InteractionEnvironment(object):
         reader = MultiWOZReader(reader_cfg, reader_cfg.version)
         evaluator = MultiWozEvaluator(reader, eval_data_type='train')
         evaluator_dev = MultiWozEvaluator(reader, eval_data_type='dev')
+
+        # coherence reward
+        if self.cfg.use_ppl_as_reward:
+            ppl_model = GPT2LMHeadModel.from_pretrained(self.cfg.ppl_ckpt)
+            ppl_model.to(device2)
+            ppl_tokenizer = GPT2Tokenizer.from_pretrained(self.cfg.ppl_ckpt)
+            logger.info('Load ppl model from {}'.format(self.cfg.ppl_ckpt))
+            logger.info('Load ppl tokenizer from {}'.format(self.cfg.ppl_ckpt))
+        
+        if self.cfg.use_nsp_score_as_reward:
+            nsp_score_model = BertForNextSentencePrediction.from_pretrained(self.cfg.nsp_ckpt)
+            nsp_score_model.to(device2)
+            nsp_score_tokenizer = BertTokenizer.from_pretrained(self.cfg.nsp_ckpt)
+            logger.info('Load nsp model from {}'.format(self.cfg.nsp_ckpt))
+            logger.info('Load nsp tokenizer from {}'.format(self.cfg.nsp_ckpt))
+
         best_success = 0
         best_success_epoch = 0
         random.shuffle(self.goal_list['valid'])
@@ -613,6 +744,8 @@ class InteractionEnvironment(object):
             random.shuffle(self.goal_list['train'])
             epoch_avg_rewards = 0
             epoch_avg_rl_loss = 0
+            epoch_avg_ppl_rewards = 0
+            epoch_avg_nsp_rewards = 0
 
             # success, match = self.rl_validation(evaluator_dev)
             # logger.info('Before RL: Success rate: {}; Inform rate: {};'.format(success, match))
@@ -630,18 +763,29 @@ class InteractionEnvironment(object):
                         gen_dial_batch.append(dial_gen)
                     gen_dial_batch = convert_results_format(gen_dial_batch)
                     avg_rewards = self.get_success_reward(gen_dial_batch, evaluator)
+                    if self.cfg.use_ppl_as_reward:
+                        ppl_reward = self.get_ppl_reward(gen_dial_batch, ppl_model, ppl_tokenizer)
+                        epoch_avg_ppl_rewards += ppl_reward
+                    if self.cfg.use_nsp_score_as_reward:
+                        nsp_reward = self.get_nsp_score_reward(gen_dial_batch, nsp_score_model, nsp_score_tokenizer)
+                        epoch_avg_nsp_rewards += nsp_reward
                     rl_loss = self.get_rl_loss(gen_dial_batch, agent)
                     epoch_avg_rl_loss += rl_loss.item()
                     self.update_model(rl_loss, agent)
 
-                    # tqdm.write("update! rl_loss: {}".format(rl_loss.item()))
                     del rl_loss
                     del gen_dial_batch
                     torch.cuda.empty_cache()
-
                     epoch_avg_rewards += avg_rewards
 
-            logger.info('Epoch: {}; Avg rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            if self.cfg.use_nsp_score_as_reward and self.cfg.use_ppl_as_reward:
+                logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            elif self.cfg.use_ppl_as_reward:
+                logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            elif self.cfg.use_nsp_score_as_reward:
+                logger.info('Epoch: {}; Avg success rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            else:
+                logger.info('Epoch: {}; Avg rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
 
             success, match = self.rl_validation(evaluator_dev)
             if success > best_success:
@@ -649,14 +793,18 @@ class InteractionEnvironment(object):
                 best_success_epoch = epoch
                 simulator_dir = os.path.dirname(self.cfg.simulator_path)
                 dialog_dir = os.path.dirname(self.cfg.dialog_sys_path)
-                self.simulator_model.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_v4_epoch_{}'.format(epoch)))
-                self.simulator_tokenizer.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_v4_epoch_{}'.format(epoch)))
-                self.dialog_model.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_v4_epoch_{}'.format(epoch)))
-                self.dialog_tokenizer.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_v4_epoch_{}'.format(epoch)))
+                self.simulator_model.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
+                self.simulator_tokenizer.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
+                self.dialog_model.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
+                self.dialog_tokenizer.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
             
             logger.info('Epoch: {}; Success rate: {}; Inform rate: {}; Best success: {}; Best epoch: {}'.format(epoch, success, match, best_success, best_success_epoch))
 
 if __name__ == '__main__':
+    '''
+    沉默着，走了有，多遥远
+    蓦然间，抬起头，才发现
+    '''
     cfg = get_config()
     interaction = InteractionEnvironment(cfg)
     dialogs_gen = []

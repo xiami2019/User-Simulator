@@ -12,9 +12,10 @@
             "console": "integratedTerminal",
             "args": [
                 "-do_rl_training",
+                "-use_ppl_as_reward",
             ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "7",
+                "CUDA_VISIBLE_DEVICES": "6,7",
             }
         },
         {
