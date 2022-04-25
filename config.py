@@ -32,9 +32,9 @@ logger = get_or_create_logger(__name__)
 def add_config(parser):
     """ define arguments """
     group = parser.add_argument_group("Construction")
-    group.add_argument("-backbone", type=str, default="t5-base",
+    group.add_argument("-backbone", type=str, default="t5-small",
                        choices=["t5-small", "t5-base", "t5-large"])
-    group.add_argument("-version", type=str, default="2.1",
+    group.add_argument("-version", type=str, default="2.0",
                        choices=["2.0", "2.1"])
     group.add_argument("-task", type=str, default="e2e",
                        choices=["dst", "e2e"])

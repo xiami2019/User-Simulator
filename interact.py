@@ -37,8 +37,8 @@ def get_config():
     parser.add_argument("-epochs", type=int, default=20)
     parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch12')
     parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch11')
-    parser.add_argument("-simulator_save_path", type=str, default='simulator_rl_ppl_nsp_v7')
-    parser.add_argument("-dialog_save_path", type=str, default='dialog_rl_ppl_nsp_v7')
+    parser.add_argument("-simulator_save_path", type=str, default='simulator_rl_ppl_nsp_v4')
+    parser.add_argument("-dialog_save_path", type=str, default='dialog_rl_ppl_nsp_v4')
     # parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_ppl_nsp_v2_epoch_3')
     # parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_ppl_nsp_v2_epoch_3')
     parser.add_argument("-max_turn_num", type=int, default=20)
@@ -55,6 +55,7 @@ def get_config():
     parser.add_argument('-nsp_ckpt', type=str, default='./bert_nsp_model_lr_1e_5_1/ckpt-epoch9')
     parser.add_argument('-nsp_coef', type=float, default=0.5)
     parser.add_argument('-ppl_coef', type=float, default=0.5)
+    parser.add_argument('-use_bart_score', action="store_true")
     args = parser.parse_args()
 
     return args
