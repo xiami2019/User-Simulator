@@ -23,6 +23,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device2 = torch.device('cpu')
 # if torch.cuda.device_count() == 2:
 #     device2 = torch.device("cuda", 1)
+
 '''
 岁月难得沉默
 秋风厌倦漂泊
@@ -36,17 +37,24 @@ def get_config():
     parser.add_argument("-epochs", type=int, default=20)
     parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch12')
     parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch11')
+    parser.add_argument("-simulator_save_path", type=str, default='simulator_rl_ppl_nsp_v7')
+    parser.add_argument("-dialog_save_path", type=str, default='dialog_rl_ppl_nsp_v7')
+    # parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_ppl_nsp_v2_epoch_3')
+    # parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_ppl_nsp_v2_epoch_3')
+    parser.add_argument("-max_turn_num", type=int, default=20)
     parser.add_argument("-data_dir", type=str, default='./data/MultiWOZ_2.0/')
     parser.add_argument("-model_dir", type=str, default="simulator_t5_small")
     parser.add_argument("-discount_factor", type=float, default=0.99)
     parser.add_argument('-rl_lr', type=float, default=0.0001, help='learning rate for reinforcement learning')
     parser.add_argument('-grad_clip', type=float, default=5)
-    parser.add_argument("-seed", type=int, default=42)
+    parser.add_argument("-seed", type=int, default=1998)
     parser.add_argument('-do_rl_training', action="store_true")
     parser.add_argument('-use_ppl_as_reward', action="store_true")
     parser.add_argument('-ppl_ckpt', type=str, default='./gpt_lm_model_lr_1e_4_sentence/ckpt-epoch6')
     parser.add_argument('-use_nsp_score_as_reward', action="store_true")
     parser.add_argument('-nsp_ckpt', type=str, default='./bert_nsp_model_lr_1e_5_1/ckpt-epoch9')
+    parser.add_argument('-nsp_coef', type=float, default=0.5)
+    parser.add_argument('-ppl_coef', type=float, default=0.5)
     args = parser.parse_args()
 
     return args
@@ -322,9 +330,9 @@ class InteractionEnvironment(object):
                 # goal清空后终止
                 dial_gen['terminate_reason'] = 'goal清空后终止'
                 return False
-            if len(log) >= 20:
-                # 超过20轮终止
-                dial_gen['terminate_reason'] = '超过20轮终止'
+            if len(log) >= self.cfg.max_turn_num:
+                # 超过固定轮数终止
+                dial_gen['terminate_reason'] = '超过{}轮终止'.format(self.cfg.max_turn_num)
                 return False
             if system_act and ('[bye]' in system_act or '[thank]' in system_act):
                 dial_gen['terminate_reason'] = 'system said thank or bye'
@@ -363,7 +371,8 @@ class InteractionEnvironment(object):
                     self.dialog_model,
                     input_ids=input_ids,
                     eos_token_id=self.dialog_tokenizer.eos_token_id,
-                    max_length=100,
+                    # max_length=100,
+                    max_length=80,
                     output_scores=output_scores,
                     return_dict_in_generate=return_dict_in_generate,
                 )
@@ -401,7 +410,8 @@ class InteractionEnvironment(object):
                     input_ids=input_ids,
                     decoder_input_ids=resp_decoder_input_ids,
                     eos_token_id=self.dialog_tokenizer.eos_token_id,
-                    max_length=200,
+                    # max_length=200,
+                    max_length=100,
                     output_scores=output_scores,
                     return_dict_in_generate=return_dict_in_generate,
                 )
@@ -455,7 +465,8 @@ class InteractionEnvironment(object):
                     self.simulator_model,
                     input_ids=input_ids,
                     eos_token_id=self.simulator_tokenizer.eos_token_id,
-                    max_length=200,
+                    # max_length=200,
+                    max_length=100,
                     output_scores=output_scores,
                     return_dict_in_generate=return_dict_in_generate,
                 )
@@ -606,8 +617,15 @@ class InteractionEnvironment(object):
 
                 user_ppl = torch.exp(user_loss)
                 resp_ppl = torch.exp(resp_loss)
-                user_reward = 1 / (user_ppl ** 1)
-                resp_reward = 1 / (resp_ppl ** 1)
+                if torch.isnan(user_ppl):
+                    user_reward = 0
+                else:
+                    user_reward = 1 / (user_ppl ** 1)
+                if torch.isnan(resp_ppl):
+                    resp_reward = 0
+                else:
+                    resp_reward = 1 / (resp_ppl ** 1)
+
                 all_rewards += user_reward + resp_reward
                 count_num += 2
 
@@ -615,7 +633,7 @@ class InteractionEnvironment(object):
                 sys_rewards = []
 
                 usr_len = len(turn['user_act_resp_prob'])
-                sys_len = len(turn['bspn_prob']) + len(turn['sys_act_resp_prob'])
+                sys_len = len(turn['sys_act_resp_prob'])
 
                 for _ in range(usr_len):
                     usr_rewards.insert(0, user_reward)
@@ -624,10 +642,10 @@ class InteractionEnvironment(object):
                     sys_rewards.insert(0, resp_reward)
                     resp_reward = resp_reward * self.cfg.discount_factor
 
-                for i in range(len(turn['usr_rewards'])):
+                for i in range(usr_len):
                     turn['usr_rewards'][i] += usr_rewards[i]
-                for i in range(len(turn['sys_rewards'])):
-                    turn['sys_rewards'][i] += sys_rewards[i]
+                for i in range(sys_len):
+                    turn['sys_rewards'][len(turn['bspn_prob']) + i] += sys_rewards[i]
         
         return all_rewards / count_num
 
@@ -678,7 +696,9 @@ class InteractionEnvironment(object):
                 sys_rewards = []
 
                 usr_len = len(turn['user_act_resp_prob'])
-                sys_len = len(turn['bspn_prob']) + len(turn['sys_act_resp_prob'])
+                sys_len = len(turn['sys_act_resp_prob'])
+
+                len(turn['bspn_prob'])
 
                 for _ in range(usr_len):
                     usr_rewards.insert(0, user_reward)
@@ -687,10 +707,10 @@ class InteractionEnvironment(object):
                     sys_rewards.insert(0, resp_reward)
                     resp_reward = resp_reward * self.cfg.discount_factor
 
-                for i in range(len(turn['usr_rewards'])):
-                    turn['usr_rewards'][i] += usr_rewards[i] * 0.5
-                for i in range(len(turn['sys_rewards'])):
-                    turn['sys_rewards'][i] += sys_rewards[i] * 0.5
+                for i in range(usr_len):
+                    turn['usr_rewards'][i] += usr_rewards[i] * self.cfg.nsp_coef
+                for i in range(sys_len):
+                    turn['sys_rewards'][len(turn['bspn_prob']) + i] += sys_rewards[i] * self.cfg.nsp_coef
 
         return all_rewards / count_num
         
@@ -740,7 +760,7 @@ class InteractionEnvironment(object):
         for epoch in range(1, self.cfg.epochs + 1):
             self.cfg.rl_dial_one_epoch = min(len(self.goal_list['train']), self.cfg.rl_dial_one_epoch)
             n_batch = self.cfg.rl_dial_one_epoch // self.cfg.rl_batch_size
-            random.seed(epoch)
+            # random.seed(epoch)
             random.shuffle(self.goal_list['train'])
             epoch_avg_rewards = 0
             epoch_avg_rl_loss = 0
@@ -793,10 +813,10 @@ class InteractionEnvironment(object):
                 best_success_epoch = epoch
                 simulator_dir = os.path.dirname(self.cfg.simulator_path)
                 dialog_dir = os.path.dirname(self.cfg.dialog_sys_path)
-                self.simulator_model.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
-                self.simulator_tokenizer.save_pretrained(os.path.join(simulator_dir, 'simulator_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
-                self.dialog_model.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
-                self.dialog_tokenizer.save_pretrained(os.path.join(dialog_dir, 'dialog_rl_ppl_nsp_v0_epoch_{}'.format(epoch)))
+                self.simulator_model.save_pretrained(os.path.join(simulator_dir, self.cfg.simulator_save_path + '_epoch_{}'.format(epoch)))
+                self.simulator_tokenizer.save_pretrained(os.path.join(simulator_dir, self.cfg.simulator_save_path + '_epoch_{}'.format(epoch)))
+                self.dialog_model.save_pretrained(os.path.join(dialog_dir, self.cfg.dialog_save_path + '_epoch_{}'.format(epoch)))
+                self.dialog_tokenizer.save_pretrained(os.path.join(dialog_dir, self.cfg.dialog_save_path + '_epoch_{}'.format(epoch)))
             
             logger.info('Epoch: {}; Success rate: {}; Inform rate: {}; Best success: {}; Best epoch: {}'.format(epoch, success, match, best_success, best_success_epoch))
 
@@ -824,4 +844,4 @@ if __name__ == '__main__':
             dial_gen = interaction.generate_single_dialog(goal)
             dialogs_gen.append(dial_gen)
     
-        save_json(dialogs_gen, 'generate_example_test_t5_small_rl_v4.json')
+        save_json(dialogs_gen, 'generate_example_test_t5_small_nsp_ppl_rl_v2.json')
