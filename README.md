@@ -20,3 +20,6 @@ python main.py -version 2.0 -agent_type ds -run_type train -model_dir dialogue_t
 ### Next Step
 Interaction between us and ds.
 Generating new dialogue sessions.
+
+### RL Train
+CUDA_VISIBLE_DEVICES=1 python interact.py -do_rl_training -seed 1998 -simulator_save_path simulator_rl_v5 -dialog_save_path dialog_rl_v5

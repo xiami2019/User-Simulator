@@ -61,7 +61,7 @@ def pretrain_args():
     parser.add_argument(
         "--per_device_train_batch_size",
         type=int,
-        default=8,
+        default=4,
         help="Batch size (per device) for the training dataloader.",
     )
 
@@ -80,7 +80,7 @@ def pretrain_args():
     )
 
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
+    parser.add_argument("--num_train_epochs", type=int, default=6, help="Total number of training epochs to perform.")
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -90,7 +90,7 @@ def pretrain_args():
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
-        default=1,
+        default=2,
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
@@ -105,6 +105,9 @@ def pretrain_args():
     )
     parser.add_argument("--output_dir", type=str, default='steps', help="Where to store the final model.")
     parser.add_argument("--save_every", type=int, default=-1, help="To save the model every certain number of steps.")
+    parser.add_argument("--run_type", type=str, default="train", choices=["train", "predict"])
+    parser.add_argument("--ckpt", type=str, default=None)
+    parser.add_argument("--text_file", type=str, default=None)
     args = parser.parse_args()
 
     # Sanity checks
@@ -120,6 +123,9 @@ def pretrain_args():
 
     if args.output_dir is not None:
         os.makedirs(args.output_dir, exist_ok=True)
+
+    if args.run_type == 'predict' and args.ckpt is None:
+        raise ValueError("No checkpoint to predict.") 
 
     # Set seed
     args.seed = 666

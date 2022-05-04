@@ -4,6 +4,7 @@
 你说人生忧郁我不言语
 '''
 import os
+import json
 import torch
 import random
 from tqdm import tqdm
@@ -22,7 +23,7 @@ class Lm_Reader(object):
         self.data_dir = os.path.join("data", "MultiWOZ_{}".format(self.cfg.version), "processed")
     
         if self.cfg.text_file is None:
-            if self.cfg.ppl_level == 'sentence':
+            if self.cfg.ppl_level == 'sentence' or self.cfg.ppl_level == 'bart_score':
                 encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence.pkl")   
             elif self.cfg.ppl_level == 'session':
                 encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_session.pkl")   
@@ -47,7 +48,7 @@ class Lm_Reader(object):
         text_data = load_json(self.cfg.text_file)
         encoded_data = []
 
-        if self.cfg.ppl_level == 'sentence':
+        if self.cfg.ppl_level == 'sentence' or self.cfg.ppl_level == 'bart_score':
             for dial in tqdm(text_data):
                 for turn in dial['log']:
                     user_idx = self.tokenizer.encode(turn['user']) + [self.tokenizer.eos_token_id]
@@ -117,7 +118,7 @@ class Lm_Reader(object):
 
         encoded_data = []
         max_len = 0
-        if data_level == 'sentence':
+        if data_level == 'sentence' or data_level == 'bart_score':
             for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
                 for idx, t in enumerate(dial['log']):
                     user_idx = self.tokenizer.encode(t['user']) + [self.tokenizer.eos_token_id]
@@ -322,3 +323,37 @@ class MultiwozNSPDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx]['data'], self.data[idx]['label']
+
+class MultiwozBartScoreDataset(Dataset):
+    '''
+    do not tokenize, so do not need reader;
+    '''
+    def __init__(self, text_file) -> None:
+        super().__init__()
+        self.data = self.construct_bartscore_data(text_file)
+
+    def construct_bartscore_data(self, text_file):
+        bart_score_data = []
+        if text_file == 'test' or text_file == 'dev':
+            with open('./data/MultiWOZ_2.0/processed/bart_score_{}_data.json'.format(text_file), 'r') as f:
+                for line in f.readlines():
+                    turn = json.loads(line)
+                    bart_score_data.append((turn['text'], turn['summary']))
+        else:
+            text_data = load_json(text_file)
+            for dial in text_data:
+                history = 'session starts.'
+                for turn in dial['log']:
+                    bart_score_data.append((history, turn['user']))
+                    history += ' ' + turn['user']
+                    bart_score_data.append((history, turn['sys']))
+                    history += ' ' + turn['sys']
+
+        return bart_score_data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx][0], self.data[idx][1]
+

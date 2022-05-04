@@ -19,6 +19,24 @@
             }
         },
         {
+            "name": "Python: calculate_bart_score",
+            "type": "python",
+            "request": "launch",
+            "program": "train_bartscore.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--run_type",
+                "predict",
+                "--ckpt",
+                "my_bartscore",
+                "--text_file",
+                "test"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+            }
+        },
+        {
             "name": "Python: train_lm.py",
             "type": "python",
             "request": "launch",

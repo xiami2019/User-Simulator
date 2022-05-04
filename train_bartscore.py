@@ -1,3 +1,4 @@
+import torch
 import math
 import os
 from args import pretrain_args
@@ -6,21 +7,62 @@ from accelerate import Accelerator
 from datasets import load_dataset
 from torch.utils.data.dataloader import DataLoader
 from tqdm.auto import tqdm
+from bart_score import BARTScorer
 from transformers import (
     AdamW,
     DataCollatorForSeq2Seq,
     get_scheduler,
     set_seed,
 )
-import time
 from transformers import BartTokenizer, BartForConditionalGeneration
+from lm_dataset import MultiwozBartScoreDataset
+from utils import definitions
+from itertools import chain
 
 
 class BART:
     def __init__(self, checkpoint='facebook/bart-large-cnn'):
         self.model = BartForConditionalGeneration.from_pretrained(checkpoint)
-        self.tokenizer = BartTokenizer.from_pretrained(checkpoint)
+        self.tokenizer = self.init_tokenizer(checkpoint)
         self.criterion = None
+
+    def init_tokenizer(self, checkpoint):
+        checkpoint = 'facebook/bart-large-cnn'
+        if checkpoint == 'facebook/bart-large-cnn':
+            tokenizer = BartTokenizer.from_pretrained(checkpoint)
+            special_tokens = []
+
+            # add domains
+            domains = definitions.ALL_DOMAINS + ['general']
+            for domain in sorted(domains):
+                token = "[" + domain + "]"
+                special_tokens.append(token)
+            # add intents
+            intents = list(set(chain(*definitions.DIALOG_ACTS.values())))
+            for intent in sorted(intents):
+                token = "[" + intent + "]"
+                special_tokens.append(token)
+
+            intents = list(set(chain(*definitions.USER_ACTS.values())))
+            for intent in sorted(intents):
+                token = "[" + intent + "]"
+                special_tokens.append(token)
+
+            # add slots
+            slots = list(set(definitions.ALL_INFSLOT + definitions.ALL_REQSLOT))
+
+            for slot in sorted(slots):
+                token = "[value_" + slot + "]"
+                special_tokens.append(token)
+
+            special_tokens.extend(definitions.SPECIAL_TOKENS)
+            tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+        else:
+            tokenizer = BartTokenizer.from_pretrained(checkpoint)
+
+        self.model.resize_token_embeddings(len(tokenizer))
+
+        return tokenizer
 
     def pretrain(self, args):
         """
@@ -164,6 +206,7 @@ class BART:
                         accelerator.wait_for_everyone()
                         unwrapped_model = accelerator.unwrap_model(model)
                         unwrapped_model.save_pretrained(out_dir, save_function=accelerator.save)
+                        self.tokenizer.save_pretrained(out_dir)
 
                 if completed_steps >= args.max_train_steps:
                     break
@@ -172,9 +215,36 @@ class BART:
             accelerator.wait_for_everyone()
             unwrapped_model = accelerator.unwrap_model(model)
             unwrapped_model.save_pretrained(args.output_dir, save_function=accelerator.save)
-
+            self.tokenizer.save_pretrained(args.output_dir)
 
 if __name__ == '__main__':
-    bart = BART()
     args = pretrain_args()
-    bart.pretrain(args)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.run_type == 'train':
+        bart = BART()
+        bart.pretrain(args)
+    else:
+        bart_scorer = BARTScorer(device=device, checkpoint=args.ckpt)
+        dataset = MultiwozBartScoreDataset(args.text_file)
+        batch_num = len(dataset) // args.per_device_eval_batch_size
+        if len(dataset) % args.per_device_eval_batch_size != 0:
+            batch_num += 1
+        
+        all_bart_score = []
+        for i in tqdm(range(batch_num)):
+            srctxt = []
+            tgttxt = []
+            for j in range(args.per_device_eval_batch_size):
+                if i * args.per_device_eval_batch_size + j < len(dataset):
+                    context, resp = dataset[i * args.per_device_eval_batch_size + j]
+                    srctxt.append(context)
+                    tgttxt.append(resp)
+            outputs = bart_scorer.score(srctxt, tgttxt, batch_size=len(srctxt))
+            all_bart_score.extend(outputs)
+
+        print('Bart Score is: {}'.format(sum(all_bart_score) / len(all_bart_score)))
+            
+
+
+
+        

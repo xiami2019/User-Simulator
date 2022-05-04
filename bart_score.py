@@ -4,6 +4,8 @@ import traceback
 from transformers import BartTokenizer, BartForConditionalGeneration
 from typing import List
 import numpy as np
+from utils import definitions
+from itertools import chain
 
 
 class BARTScorer:
@@ -11,14 +13,53 @@ class BARTScorer:
         # Set up model
         self.device = device
         self.max_length = max_length
-        self.tokenizer = BartTokenizer.from_pretrained(checkpoint)
+        # self.tokenizer = BartTokenizer.from_pretrained(checkpoint)
         self.model = BartForConditionalGeneration.from_pretrained(checkpoint)
+        self.tokenizer = self.init_tokenizer(checkpoint)
         self.model.eval()
         self.model.to(device)
 
         # Set up loss
         self.loss_fct = nn.NLLLoss(reduction='none', ignore_index=self.model.config.pad_token_id)
         self.lsm = nn.LogSoftmax(dim=1)
+
+    def init_tokenizer(self, checkpoint):
+        checkpoint = 'facebook/bart-large-cnn'
+        if checkpoint == 'facebook/bart-large-cnn':
+            tokenizer = BartTokenizer.from_pretrained(checkpoint)
+            special_tokens = []
+
+            # add domains
+            domains = definitions.ALL_DOMAINS + ['general']
+            for domain in sorted(domains):
+                token = "[" + domain + "]"
+                special_tokens.append(token)
+            # add intents
+            intents = list(set(chain(*definitions.DIALOG_ACTS.values())))
+            for intent in sorted(intents):
+                token = "[" + intent + "]"
+                special_tokens.append(token)
+
+            intents = list(set(chain(*definitions.USER_ACTS.values())))
+            for intent in sorted(intents):
+                token = "[" + intent + "]"
+                special_tokens.append(token)
+
+            # add slots
+            slots = list(set(definitions.ALL_INFSLOT + definitions.ALL_REQSLOT))
+
+            for slot in sorted(slots):
+                token = "[value_" + slot + "]"
+                special_tokens.append(token)
+
+            special_tokens.extend(definitions.SPECIAL_TOKENS)
+            tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+        else:
+            tokenizer = BartTokenizer.from_pretrained(checkpoint)
+
+        self.model.resize_token_embeddings(len(tokenizer))
+
+        return tokenizer
 
     def load(self, path=None):
         """ Load model from paraphrase finetuning """

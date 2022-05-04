@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=7 python train_bartscore.py --run_type predict --ckpt my_bartscore --text_file test

@@ -117,13 +117,10 @@ def convert_generate_action_span_to_dict(act_span):
                 current_intent = temp_token
                 if current_domain:
                     act_dict[current_domain][current_intent] = set()
-                # else:
-                #     raise Exception("It's an intent without a domain token.")
         else: # slot name
             if current_domain and current_intent:
-                act_dict[current_domain][current_intent].add(single_token)
-            # else:
-            #     raise Exception("An domain token and an intent token are expected.")
+                if current_domain in act_dict and current_intent in act_dict[current_domain]:
+                    act_dict[current_domain][current_intent].add(single_token)
 
     for domain in act_dict:
         for intent in act_dict[domain]:

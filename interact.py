@@ -46,16 +46,20 @@ def get_config():
     parser.add_argument("-model_dir", type=str, default="simulator_t5_small")
     parser.add_argument("-discount_factor", type=float, default=0.99)
     parser.add_argument('-rl_lr', type=float, default=0.0001, help='learning rate for reinforcement learning')
-    parser.add_argument('-grad_clip', type=float, default=5)
+    parser.add_argument('-grad_clip', type=float, default=1)
     parser.add_argument("-seed", type=int, default=1998)
     parser.add_argument('-do_rl_training', action="store_true")
     parser.add_argument('-use_ppl_as_reward', action="store_true")
     parser.add_argument('-ppl_ckpt', type=str, default='./gpt_lm_model_lr_1e_4_sentence/ckpt-epoch6')
     parser.add_argument('-use_nsp_score_as_reward', action="store_true")
     parser.add_argument('-nsp_ckpt', type=str, default='./bert_nsp_model_lr_1e_5_1/ckpt-epoch9')
+    parser.add_argument('-gpt_score_ckpt', type=str, default='./bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6')
     parser.add_argument('-nsp_coef', type=float, default=0.5)
     parser.add_argument('-ppl_coef', type=float, default=0.5)
     parser.add_argument('-use_bart_score', action="store_true")
+    parser.add_argument('-use_gpt_score_as_reward', action="store_true")
+    parser.add_argument('-gpt_score_coef', type=float, default=0.5)
+    parser.add_argument('-user_mean_rl_loss', action="store_true")
     args = parser.parse_args()
 
     return args
@@ -540,11 +544,15 @@ class InteractionEnvironment(object):
                     assert prob.shape[0] == len(turn['sys_rewards'])
                     for i in range(len(prob)):
                         turn_rl_loss += -1 * torch.log(prob[i]) * turn['sys_rewards'][i]
+                    if self.cfg.user_mean_rl_loss:
+                        turn_rl_loss /= len(prob)
                 elif agent == 'usr':
                     prob = turn['user_act_resp_prob']
                     assert prob.shape[0] == len(turn['usr_rewards'])
                     for i in range(len(prob)):
                         turn_rl_loss += -1 * torch.log(prob[i]) * turn['usr_rewards'][i]
+                    if self.cfg.user_mean_rl_loss:
+                        turn_rl_loss /= len(prob)
                 rl_loss += turn_rl_loss
                 turn_num += 1
 
@@ -644,9 +652,68 @@ class InteractionEnvironment(object):
                     resp_reward = resp_reward * self.cfg.discount_factor
 
                 for i in range(usr_len):
-                    turn['usr_rewards'][i] += usr_rewards[i]
+                    turn['usr_rewards'][i] += usr_rewards[i] * self.cfg.ppl_coef
                 for i in range(sys_len):
-                    turn['sys_rewards'][len(turn['bspn_prob']) + i] += sys_rewards[i]
+                    turn['sys_rewards'][len(turn['bspn_prob']) + i] += sys_rewards[i] * self.cfg.ppl_coef
+        
+        return all_rewards / count_num
+
+    def get_gpt_score_reward(self, gen_dial_batch, evaluator, tokenizer):
+        '''
+        add user gpt_score rewards to turn['usr_rewards']
+        add system gpt_score rewards to turn['sys_rewards']
+        '''
+        all_rewards = 0
+        count_num = 0
+        for dial_id in gen_dial_batch:
+            for turn in gen_dial_batch[dial_id]:
+                user_ids = torch.tensor([tokenizer.encode(turn['user']) + [tokenizer.eos_token_id]])
+                resp_ids = torch.tensor([tokenizer.encode(turn['resp_gen']) + [tokenizer.eos_token_id]])
+                user_ids = user_ids.to(device2)
+                resp_ids = resp_ids.to(device2)
+
+                with torch.no_grad():
+                    user_outputs = evaluator(
+                        input_ids=user_ids,
+                        labels=user_ids,
+                    )
+                    resp_outputs = evaluator(
+                        input_ids=resp_ids,
+                        labels=resp_ids,
+                    )
+
+                user_gpt_score = user_outputs.loss.cpu()
+                resp_gpt_score = resp_outputs.loss.cpu()
+
+                if torch.isnan(user_gpt_score):
+                    user_reward = 0
+                else:
+                    user_reward = min(1, 1 / (user_gpt_score ** 1))
+                if torch.isnan(resp_gpt_score):
+                    resp_reward = 0
+                else:
+                    resp_reward = min(1, 1 / (resp_gpt_score ** 1))
+
+                all_rewards += user_reward + resp_reward
+                count_num += 2
+
+                usr_rewards = []
+                sys_rewards = []
+
+                usr_len = len(turn['user_act_resp_prob'])
+                sys_len = len(turn['sys_act_resp_prob'])
+
+                for _ in range(usr_len):
+                    usr_rewards.insert(0, user_reward)
+                    user_reward = user_reward * self.cfg.discount_factor
+                for _ in range(sys_len):
+                    sys_rewards.insert(0, resp_reward)
+                    resp_reward = resp_reward * self.cfg.discount_factor
+
+                for i in range(usr_len):
+                    turn['usr_rewards'][i] += usr_rewards[i] * self.cfg.gpt_score_coef
+                for i in range(sys_len):
+                    turn['sys_rewards'][len(turn['bspn_prob']) + i] += sys_rewards[i] * self.cfg.gpt_score_coef
         
         return all_rewards / count_num
 
@@ -754,6 +821,13 @@ class InteractionEnvironment(object):
             logger.info('Load nsp model from {}'.format(self.cfg.nsp_ckpt))
             logger.info('Load nsp tokenizer from {}'.format(self.cfg.nsp_ckpt))
 
+        if self.cfg.use_gpt_score_as_reward:
+            gpt_score_model = GPT2LMHeadModel.from_pretrained(self.cfg.gpt_score_ckpt)
+            gpt_score_model.to(device2)
+            gpt_score_tokenizer = GPT2Tokenizer.from_pretrained(self.cfg.gpt_score_ckpt)
+            logger.info('Load gpt score model from {}'.format(self.cfg.gpt_score_ckpt))
+            logger.info('Load gpt score tokenizer from {}'.format(self.cfg.gpt_score_ckpt))
+
         best_success = 0
         best_success_epoch = 0
         random.shuffle(self.goal_list['valid'])
@@ -767,6 +841,7 @@ class InteractionEnvironment(object):
             epoch_avg_rl_loss = 0
             epoch_avg_ppl_rewards = 0
             epoch_avg_nsp_rewards = 0
+            epoch_avg_gpt_score_rewards = 0
 
             # success, match = self.rl_validation(evaluator_dev)
             # logger.info('Before RL: Success rate: {}; Inform rate: {};'.format(success, match))
@@ -790,6 +865,9 @@ class InteractionEnvironment(object):
                     if self.cfg.use_nsp_score_as_reward:
                         nsp_reward = self.get_nsp_score_reward(gen_dial_batch, nsp_score_model, nsp_score_tokenizer)
                         epoch_avg_nsp_rewards += nsp_reward
+                    if self.cfg.use_gpt_score_as_reward:
+                        gpt_score_reward = self.get_gpt_score_reward(gen_dial_batch, gpt_score_model, gpt_score_tokenizer)
+                        epoch_avg_gpt_score_rewards += gpt_score_reward
                     rl_loss = self.get_rl_loss(gen_dial_batch, agent)
                     epoch_avg_rl_loss += rl_loss.item()
                     self.update_model(rl_loss, agent)
@@ -799,14 +877,23 @@ class InteractionEnvironment(object):
                     torch.cuda.empty_cache()
                     epoch_avg_rewards += avg_rewards
 
-            if self.cfg.use_nsp_score_as_reward and self.cfg.use_ppl_as_reward:
-                logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
-            elif self.cfg.use_ppl_as_reward:
-                logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            if self.cfg.use_nsp_score_as_reward and self.cfg.use_gpt_score_as_reward:
+                logger.info('Epoch: {}; Avg success rewards: {}; Avg gpt score rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_gpt_score_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            elif self.cfg.use_gpt_score_as_reward:
+                logger.info('Epoch: {}; Avg success rewards: {}; Avg gpt score rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_gpt_score_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
             elif self.cfg.use_nsp_score_as_reward:
                 logger.info('Epoch: {}; Avg success rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
             else:
                 logger.info('Epoch: {}; Avg rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+
+            # if self.cfg.use_nsp_score_as_reward and self.cfg.use_ppl_as_reward:
+            #     logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            # elif self.cfg.use_ppl_as_reward:
+            #     logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            # elif self.cfg.use_nsp_score_as_reward:
+            #     logger.info('Epoch: {}; Avg success rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
+            # else:
+            #     logger.info('Epoch: {}; Avg rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
 
             success, match = self.rl_validation(evaluator_dev)
             if success > best_success:

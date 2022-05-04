@@ -1,1 +1,0 @@
-CUDA_VISIBLE_DEVICES=1 python train_lm.py -ckpt ./gpt_lm_model_lr_1e_4/ckpt-epoch5 -run_type predict -text_file generate_example_test_t5_small_rl_v4.json

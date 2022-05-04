@@ -47,9 +47,9 @@ def get_config():
     parser.add_argument('-model_dir', type=str, default='gpt_lm_model')
     parser.add_argument('-no_learning_rate_decay', action="store_true")
     parser.add_argument('-text_file', type=str, default=None)
-    parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session'])
+    parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session', 'bart_score'])
     parser.add_argument('-early_stopping', type=int, default=5)
-    parser.add_argument('-task', type=str, choices=['ppl', 'nsp'])
+    parser.add_argument('-task', type=str, default='ppl', choices=['ppl', 'nsp'])
     parser.add_argument('-nsp_score', type=str, default='hard', choices=['soft', 'hard'])
 
     return parser.parse_args()
@@ -239,6 +239,7 @@ class LMRunner(BaseRunner):
         num_training_steps_per_epoch = len(train_dataLodaer)
         optimizer, scheduler = self.get_optimizer_and_scheduler(num_training_steps_per_epoch)
         best_ppl = float('inf')
+        best_bart_score = float('inf')
         best_epoch = 0
         stop_count = 0
 
@@ -268,17 +269,30 @@ class LMRunner(BaseRunner):
                 if self.cfg.log_frequency > 0 and (step + 1) % self.cfg.log_frequency == 0:
                     tqdm.write('Epoch: {}; Batch: {}; Loss: {:.8}'.format(epoch, step + 1, loss.item()))
 
-            current_ppl, eval_loss = self.validation('dev')
-            if current_ppl < best_ppl:
-                stop_count = 0
-                best_ppl = current_ppl
-                best_epoch = epoch
-                self.save_model(epoch)
+            if self.cfg.ppl_level == 'bart_score':
+                current_bart_score, eval_loss = self.validation('dev')
+                if current_bart_score < best_bart_score:
+                    stop_count = 0
+                    best_bart_score = current_bart_score
+                    best_epoch = epoch
+                    self.save_model(epoch)
+                else:
+                    stop_count += 1
             else:
-                stop_count += 1
+                current_ppl, eval_loss = self.validation('dev')
+                if current_ppl < best_ppl:
+                    stop_count = 0
+                    best_ppl = current_ppl
+                    best_epoch = epoch
+                    self.save_model(epoch)
+                else:
+                    stop_count += 1
 
             logger.info('Done {}/{} epoch: avg training loss: {:.6}; validation loss:{:.6}'.format(epoch, self.cfg.epochs, training_avg_loss / num_training_steps_per_epoch, eval_loss))
-            logger.info('Current validation PPL: {:.3}; Best PPL is {:.3} at epoch {};'.format(current_ppl, best_ppl, best_epoch))            
+            if self.cfg.ppl_level == 'bart_score':
+                logger.info('Current validation BartScore: {:.3}; Best BartScore is {:.3} at epoch {};'.format(current_bart_score, best_bart_score, best_epoch))
+            else:
+                logger.info('Current validation PPL: {:.3}; Best PPL is {:.3} at epoch {};'.format(current_ppl, best_ppl, best_epoch))            
 
             if stop_count >= self.cfg.early_stopping:
                 logger.info('Early stopped. Stop count is {}'.format(self.cfg.early_stopping))
@@ -314,12 +328,19 @@ class LMRunner(BaseRunner):
 
             for i in range(logits.shape[0]):
                 loss = loss_fct(logits_without_padding[i], labels_without_padding[i])
-                neg_log_likelihood = loss.item() * (target_len[i] + 1)
-                nlls.append(neg_log_likelihood)
-                total_token += target_len[i] + 1
+                if self.cfg.ppl_level == 'bart_score':
+                    nlls.append(loss.item())
+                else:
+                    neg_log_likelihood = loss.item() * (target_len[i] + 1)
+                    nlls.append(neg_log_likelihood)
+                    total_token += target_len[i] + 1
 
-        ppl = math.exp(sum(nlls) / total_token)
-        return ppl, eval_loss / len(valid_dataLodaer)
+        if self.cfg.ppl_level == 'bart_score':
+            bart_score = sum(nlls) / len(nlls)
+            return bart_score, eval_loss / len(valid_dataLodaer)
+        else:
+            ppl = math.exp(sum(nlls) / total_token)
+            return ppl, eval_loss / len(valid_dataLodaer)
 
 def main():
     cfg = get_config()
@@ -342,7 +363,10 @@ def main():
             runner.train()
         elif cfg.run_type == 'predict':
             ppl, _ = runner.validation('test')
-            logger.info("Test set PPL: {}".format(ppl))
+            if cfg.ppl_level == 'bart_score':
+                logger.info("Test set Bart Score: {}".format(ppl))
+            else:
+                logger.info("Test set PPL: {}".format(ppl))
     elif cfg.task == 'nsp':
         reader = Bert_Reader(cfg)
         runner = BertRunner(cfg, reader)
