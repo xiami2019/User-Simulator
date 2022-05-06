@@ -11,11 +11,11 @@
             "program": "interact.py",
             "console": "integratedTerminal",
             "args": [
-                "-do_rl_training",
-                "-use_ppl_as_reward",
+                // "-do_rl_training",
+                // "-use_ppl_as_reward",
             ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "6,7",
+                "CUDA_VISIBLE_DEVICES": "4",
             }
         },
         {
@@ -117,7 +117,9 @@
             "console": "integratedTerminal",
             "args": [
                 "-output_result_path",
-                "generate_example_test_t5_small_nsp_ppl_rl_v2.json",
+                // "generate_example_test_t5_small_rl_nsp_gptscore_v1.json",
+                "generate_example_test_t5_small_rl_v5.json",
+                // "generate_example_test_t5_small_nsp_ppl_rl_v2.json",
                 // "generate_example_test_t5_small_rl_v4.json",
                 // "generate_example_test_t5_small_rl_v3.json",
                 // "generate_example_test_t5_small_rl_v2.json",
@@ -128,6 +130,29 @@
                 "dialogue_t5_small",
                 "-eval_type",
                 "online"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "7",
+            }
+        },
+        {
+            "name": "Python: compute_all_scores.py",
+            "type": "python",
+            "request": "launch",
+            "program": "compute_all_scores.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-output_result_path",
+                // "generate_example_test_t5_small_rl_nsp_gptscore_v2_1.json",
+                // "dialog_t5_small_offline_ep11_onlineformat.json",
+                // "dialog_t5_small_offline_ep11.json",
+                // "generate_example_test_t5_small.json",
+                "generate_example_test_t5_small_bspnprompt.json",
+                // "generate_example_test_t5_small_rl_v5.json",
+                "-config_dir",
+                "dialogue_t5_small",
+                "-eval_type",
+                "online",
             ],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "7",

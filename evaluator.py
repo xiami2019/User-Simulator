@@ -334,6 +334,8 @@ class MultiWozEvaluator(object):
             success, match, stats, counts = self._evaluateGeneratedDialogue(
                 dial, goal, reqs, counts, add_auxiliary_task=add_auxiliary_task)
 
+            dials[dial_id].append({'success': success, 'inform': match})
+
             successes += success
             matches += match
             dial_num += 1
@@ -435,8 +437,8 @@ class MultiWozEvaluator(object):
                 for requestable in requestables:
                     if requestable == 'reference':
                         if '[value_reference]' in sent_t:
-                            # if pointer was allowing for that?
                             if 'pointer' not in turn:
+                                # In online evaluation, groundtruth booking status is not a available
                                 provided_requestables[domain].append('reference')
                             elif 'booked' in turn['pointer'] or 'ok' in turn['pointer']:
                                 provided_requestables[domain].append('reference')

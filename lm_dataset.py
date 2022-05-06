@@ -23,22 +23,23 @@ class Lm_Reader(object):
         self.data_dir = os.path.join("data", "MultiWOZ_{}".format(self.cfg.version), "processed")
     
         if self.cfg.text_file is None:
-            if self.cfg.ppl_level == 'sentence' or self.cfg.ppl_level == 'bart_score':
-                encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence.pkl")   
-            elif self.cfg.ppl_level == 'session':
-                encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_session.pkl")   
+            if not self.cfg.compute_for_single:
+                if self.cfg.ppl_level == 'sentence' or self.cfg.ppl_level == 'bart_score':
+                    encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence.pkl")   
+                elif self.cfg.ppl_level == 'session':
+                    encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_session.pkl")   
 
-            if os.path.exists(encoded_data_path):
-                logger.info("Load encoded data from {}".format(encoded_data_path))
-                self.data = load_pickle(encoded_data_path)
-            else:
-                logger.info("Encode data and save to {}".format(encoded_data_path))
-                train = self.encode_data('train', self.cfg.ppl_level)
-                dev = self.encode_data('dev', self.cfg.ppl_level)
-                test = self.encode_data('test', self.cfg.ppl_level)
+                if os.path.exists(encoded_data_path):
+                    logger.info("Load encoded data from {}".format(encoded_data_path))
+                    self.data = load_pickle(encoded_data_path)
+                else:
+                    logger.info("Encode data and save to {}".format(encoded_data_path))
+                    train = self.encode_data('train', self.cfg.ppl_level)
+                    dev = self.encode_data('dev', self.cfg.ppl_level)
+                    test = self.encode_data('test', self.cfg.ppl_level)
 
-                self.data = {'train': train, 'dev': dev, 'test': test}
-                save_pickle(self.data, encoded_data_path)
+                    self.data = {'train': train, 'dev': dev, 'test': test}
+                    save_pickle(self.data, encoded_data_path)
         else:
             logger.info("Encode data of {}".format(self.cfg.text_file))
             test = self.encode_data_for_text_file()

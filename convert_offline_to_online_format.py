@@ -16,6 +16,8 @@ for dial_id in offline_data:
         resp = ' '.join(resp)
         single_turn['user'] = user
         single_turn['sys'] = resp
+        single_turn['belief_states'] = turn['bspn_gen']
+        single_turn["pointer"] = turn["pointer"]
         dial['log'].append(single_turn)
     online_data.append(dial)
 

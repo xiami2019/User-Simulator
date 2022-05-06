@@ -24,9 +24,39 @@ from torch.nn import CrossEntropyLoss
 from transformers import GPT2LMHeadModel, BertForNextSentencePrediction, AdamW, get_linear_schedule_with_warmup, get_constant_schedule
 from lm_dataset import Lm_Reader, Bert_Reader, MultiwozDataset, MultiwozNSPDataset, Collate_Fn, Collate_Fn_NSP
 from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
 from utils.utils import get_or_create_logger
 
 logger = get_or_create_logger(__name__)
+
+def get_config_without_unknown():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-backbone', type=str, default='gpt2', choices=['gpt2', 'bert-base-uncased'])
+    parser.add_argument('-ckpt', type=str, default=None)
+    parser.add_argument('-version', type=str, default='2.0', choices=['2.0', '2.1'])
+    parser.add_argument('-seed', type=int, default=42)
+    parser.add_argument('-run_type', type=str, default='train', choices=['train', 'predict'])
+    parser.add_argument('-max_to_keep_ckpt', type=int, default=1)
+    parser.add_argument('-epochs', type=int, default=20)
+    parser.add_argument('-grad_accum_steps', type=int, default=1)
+    parser.add_argument('-warmup_steps', type=int, default=-1)
+    parser.add_argument('-warmup_ratio', type=float, default=0.2)
+    parser.add_argument('-learning_rate', type=float, default=1e-4)
+    parser.add_argument('-batch_size', type=int, default=32)
+    parser.add_argument('-max_grad_norm', type=float, default=1.0)
+    parser.add_argument('-log_frequency', type=int, default=100)
+    parser.add_argument('-model_dir', type=str, default='gpt_lm_model')
+    parser.add_argument('-no_learning_rate_decay', action="store_true")
+    parser.add_argument('-text_file', type=str, default=None)
+    parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session', 'bart_score'])
+    parser.add_argument('-early_stopping', type=int, default=5)
+    parser.add_argument('-task', type=str, default='ppl', choices=['ppl', 'nsp'])
+    parser.add_argument('-compute_for_single', action="store_true")
+    parser.add_argument('-nsp_score', type=str, default='soft', choices=['soft', 'hard'])
+
+    args, unknown = parser.parse_known_args()
+
+    return args
 
 def get_config():
     parser = argparse.ArgumentParser()
@@ -50,7 +80,8 @@ def get_config():
     parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session', 'bart_score'])
     parser.add_argument('-early_stopping', type=int, default=5)
     parser.add_argument('-task', type=str, default='ppl', choices=['ppl', 'nsp'])
-    parser.add_argument('-nsp_score', type=str, default='hard', choices=['soft', 'hard'])
+    parser.add_argument('-compute_for_single', action="store_true")
+    parser.add_argument('-nsp_score', type=str, default='soft', choices=['soft', 'hard'])
 
     return parser.parse_args()
 
@@ -228,6 +259,54 @@ class BertRunner(BaseRunner):
         elif self.cfg.nsp_score == 'soft':
             return score
 
+    def evaluation_for_single(self, data):
+        self.model.eval()
+        total_soft_score = 0
+        total_examples = 0
+
+        for dial_id in tqdm(data, desc='Computing nsp score for each session'):
+            dial = data[dial_id]
+            single_dial_ids = []
+            for turn in dial:
+                if 'turn_num' in turn:
+                    user_ids = self.reader.tokenizer.encode(turn['user'])[1:-1] # 去掉BERT的CLS和SEP
+                    resp_ids = self.reader.tokenizer.encode(turn['resp_gen'])[1:-1]
+                    single_dial_ids.append(user_ids)
+                    single_dial_ids.append(resp_ids)
+            batch_nsp_data = []
+            batch_nsp_labels = []
+            for i in range(1, len(single_dial_ids)):
+                batch_nsp_data.append([self.reader.tokenizer.cls_token_id] + single_dial_ids[i-1] + [self.reader.tokenizer.sep_token_id] + single_dial_ids[i])
+                batch_nsp_labels.append(0)
+
+            batch_nsp_labels = torch.tensor(batch_nsp_labels, dtype=torch.long).to(self.cfg.device)
+            batch_nsp_data = [torch.tensor(i, dtype=torch.long) for i in batch_nsp_data]
+            batch_nsp_data = pad_sequence(batch_nsp_data, batch_first=True, padding_value=self.reader.tokenizer.pad_token_id)
+            batch_nsp_data = batch_nsp_data.to(self.cfg.device)
+
+            attention_mask = torch.where(batch_nsp_data == self.reader.tokenizer.pad_token_id, 0, 1)
+
+            with torch.no_grad():
+                model_outputs = self.model(
+                    input_ids = batch_nsp_data,
+                    attention_mask = attention_mask,
+                    label_ids = batch_nsp_labels,
+                )
+            softmax = nn.Softmax(dim=1)
+            logits = model_outputs.logits
+            logits = softmax(logits)
+            pred = torch.argmax(logits, dim=1)
+            soft_score = logits[:, 0].sum()
+            total_soft_score += soft_score
+            total_examples += len(pred)
+
+            data[dial_id].append({'nsp score': float(soft_score / len(pred))})
+
+        score = total_soft_score / total_examples
+
+        return score
+
+
 class LMRunner(BaseRunner):
     def __init__(self, cfg, reader) -> None:
         super().__init__(cfg, reader)
@@ -342,6 +421,42 @@ class LMRunner(BaseRunner):
             ppl = math.exp(sum(nlls) / total_token)
             return ppl, eval_loss / len(valid_dataLodaer)
 
+    def evaluation_for_single(self, data):
+        self.model.eval()
+        all_scores = []
+
+        for dial_id in tqdm(data, desc='Computing gpt score for each sentence'):
+            dial = data[dial_id]
+            for turn in dial:
+                if 'turn_num' in turn:
+                    user_ids = self.reader.tokenizer.encode(turn['user']) + [self.reader.tokenizer.eos_token_id]
+                    resp_ids = self.reader.tokenizer.encode(turn['resp_gen']) + [self.reader.tokenizer.eos_token_id]
+                    user_ids = torch.tensor(user_ids, dtype=torch.long).to(self.cfg.device)
+                    resp_ids = torch.tensor(resp_ids, dtype=torch.long).to(self.cfg.device)
+                    if len(user_ids) > 1:
+                        with torch.no_grad():
+                            model_outputs = self.model(
+                                input_ids=user_ids,
+                                labels=user_ids,
+                            )
+                        turn['user_gpt_score'] = model_outputs.loss.item()
+                        all_scores.append(model_outputs.loss.item())
+                    else:
+                        turn['user_gpt_score'] = 'Nan'
+                    if len(resp_ids) > 1:
+                        with torch.no_grad():
+                            model_outputs = self.model(
+                                input_ids=resp_ids,
+                                labels=resp_ids,
+                            )
+                        turn['resp_gen_gpt_score'] = model_outputs.loss.item()
+                        all_scores.append(model_outputs.loss.item())
+                    else:
+                        turn['resp_gen_gpt_score'] = 'Nan'
+
+        return sum(all_scores) / len(all_scores)
+
+
 def main():
     cfg = get_config()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -379,5 +494,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

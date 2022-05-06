@@ -37,10 +37,10 @@ def get_config():
     parser.add_argument("-epochs", type=int, default=20)
     parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch12')
     parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch11')
-    parser.add_argument("-simulator_save_path", type=str, default='simulator_rl_ppl_nsp_v4')
-    parser.add_argument("-dialog_save_path", type=str, default='dialog_rl_ppl_nsp_v4')
-    # parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_ppl_nsp_v2_epoch_3')
-    # parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_ppl_nsp_v2_epoch_3')
+    parser.add_argument("-simulator_save_path", type=str, default=None)
+    parser.add_argument("-dialog_save_path", type=str, default=None)
+    # parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_v5_epoch_7')
+    # parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_v5_epoch_7')
     parser.add_argument("-max_turn_num", type=int, default=20)
     parser.add_argument("-data_dir", type=str, default='./data/MultiWOZ_2.0/')
     parser.add_argument("-model_dir", type=str, default="simulator_t5_small")
@@ -59,7 +59,8 @@ def get_config():
     parser.add_argument('-use_bart_score', action="store_true")
     parser.add_argument('-use_gpt_score_as_reward', action="store_true")
     parser.add_argument('-gpt_score_coef', type=float, default=0.5)
-    parser.add_argument('-user_mean_rl_loss', action="store_true")
+    parser.add_argument('-use_mean_rl_loss', action="store_true")
+    parser.add_argument('-generate_results_path', type=str, default='generate_results.json')
     args = parser.parse_args()
 
     return args
@@ -369,12 +370,14 @@ class InteractionEnvironment(object):
                 input_ids = input_ids.to(device)
 
                 dialog_generate = self.dialog_model.generate.__wrapped__
-                
+                bspn_decoder_input_ids = self.tensorize([[self.dialog_tokenizer.pad_token_id] + [self.dialog_tokenizer.convert_tokens_to_ids(definitions.BOS_BELIEF_TOKEN)]])
+                bspn_decoder_input_ids = bspn_decoder_input_ids.to(device)
                 # belief states generation
                 torch.set_grad_enabled(if_sys_need_grad)
                 model_output = dialog_generate(
                     self.dialog_model,
                     input_ids=input_ids,
+                    decoder_input_ids=bspn_decoder_input_ids,
                     eos_token_id=self.dialog_tokenizer.eos_token_id,
                     # max_length=100,
                     max_length=80,
@@ -544,14 +547,14 @@ class InteractionEnvironment(object):
                     assert prob.shape[0] == len(turn['sys_rewards'])
                     for i in range(len(prob)):
                         turn_rl_loss += -1 * torch.log(prob[i]) * turn['sys_rewards'][i]
-                    if self.cfg.user_mean_rl_loss:
+                    if self.cfg.use_mean_rl_loss:
                         turn_rl_loss /= len(prob)
                 elif agent == 'usr':
                     prob = turn['user_act_resp_prob']
                     assert prob.shape[0] == len(turn['usr_rewards'])
                     for i in range(len(prob)):
                         turn_rl_loss += -1 * torch.log(prob[i]) * turn['usr_rewards'][i]
-                    if self.cfg.user_mean_rl_loss:
+                    if self.cfg.use_mean_rl_loss:
                         turn_rl_loss /= len(prob)
                 rl_loss += turn_rl_loss
                 turn_num += 1
@@ -932,4 +935,4 @@ if __name__ == '__main__':
             dial_gen = interaction.generate_single_dialog(goal)
             dialogs_gen.append(dial_gen)
     
-        save_json(dialogs_gen, 'generate_example_test_t5_small_nsp_ppl_rl_v2.json')
+        save_json(dialogs_gen, cfg.generate_results_path)
