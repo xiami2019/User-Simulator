@@ -435,8 +435,8 @@ class InteractionEnvironment(object):
                 if with_logprob:
                     single_turn['sys_act_resp_prob'] = resp_prob
                 
-                system_act = self.dialog_tokenizer.decode(system_act).split()
-                system_resp = self.dialog_tokenizer.decode(system_resp).split()
+                system_act = self.dialog_tokenizer.decode(system_act, clean_up_tokenization_spaces=False).split()
+                system_resp = self.dialog_tokenizer.decode(system_resp, clean_up_tokenization_spaces=False).split()
                 system_act_dict = convert_generate_action_span_to_dict(system_act[1:-1])
                 goal_state_dict = update_goal_states_during_gen(goal_state_dict, system_act_dict, 'sys')
                 
@@ -492,8 +492,8 @@ class InteractionEnvironment(object):
                     single_turn['user_act_resp_prob'] = user_utterance_prob
 
 
-                user_act = self.simulator_tokenizer.decode(user_act).split(' ')
-                user_utterance = self.simulator_tokenizer.decode(user_utterance).split(' ')
+                user_act = self.simulator_tokenizer.decode(user_act, clean_up_tokenization_spaces=False).split(' ')
+                user_utterance = self.simulator_tokenizer.decode(user_utterance, clean_up_tokenization_spaces=False).split(' ')
 
                 if len(user_act[1:-1]) == 0 or user_act[1][1:-1] == 'general':
                     turn_domain = ['[general]']

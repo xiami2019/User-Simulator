@@ -19,6 +19,31 @@
             }
         },
         {
+            "name": "Python: interact_rl",
+            "type": "python",
+            "request": "launch",
+            "program": "interact.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-do_rl_training",
+                "-simulator_save_path",
+                "simulator_rl_gpt_score_nsp_v1",
+                "-dialog_save_path",
+                "dialog_rl_gpt_score_nsp_v1",
+                "-use_nsp_score_as_reward",
+                "-nsp_coef",
+                "0.01",
+                "-use_gpt_score_as_reward",
+                "-gpt_score_coef",
+                "0.01",
+                "-seed",
+                "1998",
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+            }
+        },
+        {
             "name": "Python: calculate_bart_score",
             "type": "python",
             "request": "launch",
@@ -143,11 +168,12 @@
             "console": "integratedTerminal",
             "args": [
                 "-output_result_path",
+                "generate_example_test_t5_small_fixed.json",
                 // "generate_example_test_t5_small_rl_nsp_gptscore_v2_1.json",
                 // "dialog_t5_small_offline_ep11_onlineformat.json",
                 // "dialog_t5_small_offline_ep11.json",
                 // "generate_example_test_t5_small.json",
-                "generate_example_test_t5_small_bspnprompt.json",
+                // "generate_example_test_t5_small_bspnprompt.json",
                 // "generate_example_test_t5_small_rl_v5.json",
                 "-config_dir",
                 "dialogue_t5_small",

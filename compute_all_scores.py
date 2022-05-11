@@ -19,32 +19,36 @@ def compute_success_and_inform_rate(args, cfg, data):
 
     if args.eval_type == 'offline':
         bleu, success, match = evaluator.e2e_eval(
-            data, eval_dial_list=None, add_auxiliary_task=cfg.add_auxiliary_task)
+            data, eval_dial_list=None, add_auxiliary_task=cfg.add_auxiliary_task, add_success_rate=True)
         score = 0.5 * (success + match) + bleu
         logger.info('Offline Evaluation: match: %2.2f; success: %2.2f; bleu: %2.2f; score: %.2f',
                 match, success, bleu, score)
     elif args.eval_type == 'online':
         success, match = evaluator.e2e_eval(
-                data, eval_dial_list=None, add_auxiliary_task=cfg.add_auxiliary_task, online_eval=True)
+                data, eval_dial_list=None, add_auxiliary_task=cfg.add_auxiliary_task, online_eval=True, add_success_rate=True)
         logger.info('Online Evaluation: match: %2.2f; success: %2.2f;', match, success)
 
-def compute_gptscore(args, data):
+def compute_gptscore(args, data, lm_ckpt, agent=None):
     cfg = get_config_without_unknown()
 
     cfg.backbone = 'gpt2'
-    cfg.ckpt = './bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6'
+    cfg.ckpt = lm_ckpt
     cfg.version = args.version
     cfg.ppl_level = 'bart_score'
     cfg.compute_for_single = True
     cfg.task = 'ppl'
     cfg.device = args.device
+    cfg.agent = agent
 
     reader = Lm_Reader(cfg)
     runner = LMRunner(cfg, reader)
 
-    gptscore = runner.evaluation_for_single(data)
+    gptscore = runner.evaluation_for_single(data, cfg.gpt_score_normalize)
 
-    logger.info('Online Evaluation: GPT Score: %f;', gptscore)
+    if cfg.gpt_score_singe_side:
+        logger.info('Online Evaluation: GPT Score for %s: %f;',cfg.agent, gptscore)
+    else:
+        logger.info('Online Evaluation: GPT Score: %f;', gptscore)
 
 def compute_nsp_score(args, data):
     cfg = get_config_without_unknown()
@@ -78,6 +82,8 @@ if __name__ == "__main__":
     parser.add_argument("-use_gptscore", type=bool, default=True)
     parser.add_argument("-use_nspscore", type=bool, default=True)
     parser.add_argument("-seed", type=int, default=42)
+    parser.add_argument("-gpt_score_normalize", action='store_true')
+    parser.add_argument("-gpt_score_singe_side", action='store_true')
 
     args = parser.parse_args()
 
@@ -106,10 +112,17 @@ if __name__ == "__main__":
         compute_success_and_inform_rate(args, cfg, data)
 
     if args.use_gptscore:
-        compute_gptscore(args, data)
+        if args.gpt_score_singe_side:
+            lm_ckpt_sys = './bart_score_gpt_lm_model_lr_1e_4_sys_side/ckpt-epoch6'
+            lm_ckpt_usr = './bart_score_gpt_lm_model_lr_1e_4_usr_side/ckpt-epoch6'
+            compute_gptscore(args, data, lm_ckpt_sys, agent='sys')
+            compute_gptscore(args, data, lm_ckpt_usr, agent='usr')
+        else:
+            lm_ckpt = './bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6'
+            compute_gptscore(args, data, lm_ckpt)
 
     if args.use_nspscore:
         compute_nsp_score(args, data)
 
-    save_results_with_metrics(args, data)
+    # save_results_with_metrics(args, data)
     

@@ -25,9 +25,14 @@ class Lm_Reader(object):
         if self.cfg.text_file is None:
             if not self.cfg.compute_for_single:
                 if self.cfg.ppl_level == 'sentence' or self.cfg.ppl_level == 'bart_score':
-                    encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence.pkl")   
-                elif self.cfg.ppl_level == 'session':
-                    encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_session.pkl")   
+                    if self.cfg.gpt_score_singe_side:
+                        assert self.cfg.agent is not None
+                        encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence_{}.pkl".format(self.cfg.agent)) 
+                    else:
+                        encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_sentence.pkl") 
+
+                # elif self.cfg.ppl_level == 'session':
+                #     encoded_data_path = os.path.join(self.data_dir, "encoded_data_lm_session.pkl")   
 
                 if os.path.exists(encoded_data_path):
                     logger.info("Load encoded data from {}".format(encoded_data_path))
@@ -52,26 +57,37 @@ class Lm_Reader(object):
         if self.cfg.ppl_level == 'sentence' or self.cfg.ppl_level == 'bart_score':
             for dial in tqdm(text_data):
                 for turn in dial['log']:
-                    user_idx = self.tokenizer.encode(turn['user']) + [self.tokenizer.eos_token_id]
-                    resp_idx = self.tokenizer.encode(turn['sys']) + [self.tokenizer.eos_token_id]
-                    if len(user_idx) > 1:
-                        encoded_data.append(user_idx)
-                    if len(resp_idx) > 1:
-                        encoded_data.append(resp_idx)
-        elif self.cfg.ppl_level == 'session':
-            bos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
-            eos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
-            bos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_RESP_TOKEN)
-            eos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
+                    if self.cfg.gpt_score_singe_side:
+                        assert self.cfg.agent is not None
+                        if self.cfg.agent == 'usr':
+                            user_idx = self.tokenizer.encode(turn['user']) + [self.tokenizer.eos_token_id]
+                            if len(user_idx) > 1:
+                                encoded_data.append(user_idx)
+                        elif self.cfg.agent == 'sys':
+                            resp_idx = self.tokenizer.encode(turn['sys']) + [self.tokenizer.eos_token_id]
+                            if len(resp_idx) > 1:
+                                encoded_data.append(resp_idx)
+                    else:
+                        user_idx = self.tokenizer.encode(turn['user']) + [self.tokenizer.eos_token_id]
+                        resp_idx = self.tokenizer.encode(turn['sys']) + [self.tokenizer.eos_token_id]
+                        if len(user_idx) > 1:
+                            encoded_data.append(user_idx)
+                        if len(resp_idx) > 1:
+                            encoded_data.append(resp_idx)
+        # elif self.cfg.ppl_level == 'session':
+        #     bos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
+        #     eos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
+        #     bos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_RESP_TOKEN)
+        #     eos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
 
-            for dial in tqdm(text_data):
-                single_dial_ids = []
-                for turn in dial['log']:
-                    user_idx = self.tokenizer.encode(turn['user'])
-                    resp_idx = self.tokenizer.encode(turn['sys'])
-                    single_dial_ids += [bos_user_id] + user_idx + [eos_user_id]
-                    single_dial_ids += [bos_resp_id] + resp_idx + [eos_resp_id]
-                encoded_data.append(single_dial_ids + [self.tokenizer.eos_token_id])
+        #     for dial in tqdm(text_data):
+        #         single_dial_ids = []
+        #         for turn in dial['log']:
+        #             user_idx = self.tokenizer.encode(turn['user'])
+        #             resp_idx = self.tokenizer.encode(turn['sys'])
+        #             single_dial_ids += [bos_user_id] + user_idx + [eos_user_id]
+        #             single_dial_ids += [bos_resp_id] + resp_idx + [eos_resp_id]
+        #         encoded_data.append(single_dial_ids + [self.tokenizer.eos_token_id])
 
         return encoded_data
 
@@ -122,27 +138,36 @@ class Lm_Reader(object):
         if data_level == 'sentence' or data_level == 'bart_score':
             for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
                 for idx, t in enumerate(dial['log']):
-                    user_idx = self.tokenizer.encode(t['user']) + [self.tokenizer.eos_token_id]
-                    resp_idx = self.tokenizer.encode(t['resp']) + [self.tokenizer.eos_token_id]
-                    encoded_data.append(user_idx)
-                    encoded_data.append(resp_idx)
-        elif data_level == 'session':
-            bos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
-            eos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
-            bos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_RESP_TOKEN)
-            eos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
+                    if self.cfg.gpt_score_singe_side:
+                        assert self.cfg.agent is not None
+                        if self.cfg.agent == 'usr':
+                            user_idx = self.tokenizer.encode(t['user']) + [self.tokenizer.eos_token_id]
+                            encoded_data.append(user_idx)
+                        elif self.cfg.agent == 'sys':
+                            resp_idx = self.tokenizer.encode(t['resp']) + [self.tokenizer.eos_token_id]
+                            encoded_data.append(resp_idx)
+                    else:
+                        user_idx = self.tokenizer.encode(t['user']) + [self.tokenizer.eos_token_id]
+                        resp_idx = self.tokenizer.encode(t['resp']) + [self.tokenizer.eos_token_id]
+                        encoded_data.append(user_idx)
+                        encoded_data.append(resp_idx)
+        # elif data_level == 'session':
+        #     bos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_USER_TOKEN)
+        #     eos_user_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_USER_TOKEN)
+        #     bos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.BOS_RESP_TOKEN)
+        #     eos_resp_id = self.tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
 
-            max_len = 0
-            for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
-                single_dial_ids = []
-                for idx, t in enumerate(dial['log']):
-                    user_idx = self.tokenizer.encode(t['user'])
-                    resp_idx = self.tokenizer.encode(t['resp'])
-                    single_dial_ids += [bos_user_id] + user_idx + [eos_user_id]
-                    single_dial_ids += [bos_resp_id] + resp_idx + [eos_resp_id]
-                encoded_data.append(single_dial_ids + [self.tokenizer.eos_token_id])
-                max_len = max(max_len, len(single_dial_ids))
-            logger.info('Max Len is {}'.format(max_len))
+        #     max_len = 0
+        #     for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
+        #         single_dial_ids = []
+        #         for idx, t in enumerate(dial['log']):
+        #             user_idx = self.tokenizer.encode(t['user'])
+        #             resp_idx = self.tokenizer.encode(t['resp'])
+        #             single_dial_ids += [bos_user_id] + user_idx + [eos_user_id]
+        #             single_dial_ids += [bos_resp_id] + resp_idx + [eos_resp_id]
+        #         encoded_data.append(single_dial_ids + [self.tokenizer.eos_token_id])
+        #         max_len = max(max_len, len(single_dial_ids))
+        #     logger.info('Max Len is {}'.format(max_len))
 
         return encoded_data
 

@@ -307,7 +307,7 @@ class MultiWozEvaluator(object):
 
         return f1 * 100
 
-    def context_to_response_eval(self, dials, eval_dial_list=None, add_auxiliary_task=False):
+    def context_to_response_eval(self, dials, eval_dial_list=None, add_auxiliary_task=False, add_success_rate=False):
         counts = {}
         for req in self.requestables:
             counts[req+'_total'] = 0
@@ -334,7 +334,8 @@ class MultiWozEvaluator(object):
             success, match, stats, counts = self._evaluateGeneratedDialogue(
                 dial, goal, reqs, counts, add_auxiliary_task=add_auxiliary_task)
 
-            dials[dial_id].append({'success': success, 'inform': match})
+            if add_success_rate:
+                dials[dial_id].append({'success': success, 'inform': match})
 
             successes += success
             matches += match
@@ -631,7 +632,7 @@ class MultiWozEvaluator(object):
         else:
             return None
 
-    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False, online_eval=False):
+    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False, online_eval=False, add_success_rate=False):
         if not online_eval:
             if eval_for_us:
                 bleu = self.bleu_metric_us(data)
@@ -640,7 +641,7 @@ class MultiWozEvaluator(object):
                 bleu = self.bleu_metric(data)
         
         success, match, req_offer_counts, dial_num = self.context_to_response_eval(
-            data, eval_dial_list=eval_dial_list)
+            data, eval_dial_list=eval_dial_list, add_success_rate=add_success_rate)
 
         if online_eval:
             return success, match

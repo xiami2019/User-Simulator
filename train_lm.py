@@ -53,6 +53,9 @@ def get_config_without_unknown():
     parser.add_argument('-task', type=str, default='ppl', choices=['ppl', 'nsp'])
     parser.add_argument('-compute_for_single', action="store_true")
     parser.add_argument('-nsp_score', type=str, default='soft', choices=['soft', 'hard'])
+    parser.add_argument("-gpt_score_normalize", action='store_true')
+    parser.add_argument("-gpt_score_singe_side", action='store_true')
+    parser.add_argument("-agent", type=str, default=None, choices=['usr', 'sys'])
 
     args, unknown = parser.parse_known_args()
 
@@ -77,11 +80,14 @@ def get_config():
     parser.add_argument('-model_dir', type=str, default='gpt_lm_model')
     parser.add_argument('-no_learning_rate_decay', action="store_true")
     parser.add_argument('-text_file', type=str, default=None)
-    parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session', 'bart_score'])
+    parser.add_argument('-ppl_level', type=str, default='bart_score', choices=['sentence', 'session', 'bart_score'])
     parser.add_argument('-early_stopping', type=int, default=5)
     parser.add_argument('-task', type=str, default='ppl', choices=['ppl', 'nsp'])
     parser.add_argument('-compute_for_single', action="store_true")
     parser.add_argument('-nsp_score', type=str, default='soft', choices=['soft', 'hard'])
+    parser.add_argument("-gpt_score_normalize", action='store_true')
+    parser.add_argument("-gpt_score_singe_side", action='store_true')
+    parser.add_argument("-agent", type=str, default=None, choices=['usr', 'sys'])
 
     return parser.parse_args()
 
@@ -349,7 +355,7 @@ class LMRunner(BaseRunner):
                     tqdm.write('Epoch: {}; Batch: {}; Loss: {:.8}'.format(epoch, step + 1, loss.item()))
 
             if self.cfg.ppl_level == 'bart_score':
-                current_bart_score, eval_loss = self.validation('dev')
+                current_bart_score, eval_loss = self.validation('dev', self.cfg.gpt_score_normalize)
                 if current_bart_score < best_bart_score:
                     stop_count = 0
                     best_bart_score = current_bart_score
@@ -358,7 +364,7 @@ class LMRunner(BaseRunner):
                 else:
                     stop_count += 1
             else:
-                current_ppl, eval_loss = self.validation('dev')
+                current_ppl, eval_loss = self.validation('dev', self.cfg.gpt_score_normalize)
                 if current_ppl < best_ppl:
                     stop_count = 0
                     best_ppl = current_ppl
@@ -377,7 +383,7 @@ class LMRunner(BaseRunner):
                 logger.info('Early stopped. Stop count is {}'.format(self.cfg.early_stopping))
                 break
 
-    def validation(self, type):
+    def validation(self, type, norm=False):
         self.model.eval()
 
         valid_dataset = MultiwozDataset(self.reader.tokenizer, self.reader.data[type], type)
@@ -415,13 +421,19 @@ class LMRunner(BaseRunner):
                     total_token += target_len[i] + 1
 
         if self.cfg.ppl_level == 'bart_score':
-            bart_score = sum(nlls) / len(nlls)
+            if norm:
+                cutoff = np.quantile([-t for t in nlls], 0.01)
+                modified_scores = np.array([cutoff if -t < cutoff else -t for t in nlls])
+                normed_scores = (modified_scores - cutoff) / np.abs(cutoff)
+                bart_score = np.mean(normed_scores)
+            else:
+                bart_score = sum(nlls) / len(nlls)
             return bart_score, eval_loss / len(valid_dataLodaer)
         else:
             ppl = math.exp(sum(nlls) / total_token)
             return ppl, eval_loss / len(valid_dataLodaer)
 
-    def evaluation_for_single(self, data):
+    def evaluation_for_single(self, data, norm=False):
         self.model.eval()
         all_scores = []
 
@@ -433,28 +445,38 @@ class LMRunner(BaseRunner):
                     resp_ids = self.reader.tokenizer.encode(turn['resp_gen']) + [self.reader.tokenizer.eos_token_id]
                     user_ids = torch.tensor(user_ids, dtype=torch.long).to(self.cfg.device)
                     resp_ids = torch.tensor(resp_ids, dtype=torch.long).to(self.cfg.device)
-                    if len(user_ids) > 1:
-                        with torch.no_grad():
-                            model_outputs = self.model(
-                                input_ids=user_ids,
-                                labels=user_ids,
-                            )
-                        turn['user_gpt_score'] = model_outputs.loss.item()
-                        all_scores.append(model_outputs.loss.item())
-                    else:
-                        turn['user_gpt_score'] = 'Nan'
-                    if len(resp_ids) > 1:
-                        with torch.no_grad():
-                            model_outputs = self.model(
-                                input_ids=resp_ids,
-                                labels=resp_ids,
-                            )
-                        turn['resp_gen_gpt_score'] = model_outputs.loss.item()
-                        all_scores.append(model_outputs.loss.item())
-                    else:
-                        turn['resp_gen_gpt_score'] = 'Nan'
 
-        return sum(all_scores) / len(all_scores)
+                    if self.cfg.gpt_score_singe_side == False or (self.cfg.gpt_score_singe_side and self.cfg.agent == 'usr'):
+                        if len(user_ids) > 1:
+                            with torch.no_grad():
+                                model_outputs = self.model(
+                                    input_ids=user_ids,
+                                    labels=user_ids,
+                                )
+                            turn['user_gpt_score'] = model_outputs.loss.item()
+                            all_scores.append(model_outputs.loss.item())
+                        else:
+                            turn['user_gpt_score'] = 'Nan'
+
+                    if self.cfg.gpt_score_singe_side == False or (self.cfg.gpt_score_singe_side and self.cfg.agent == 'sys'):
+                        if len(resp_ids) > 1:
+                            with torch.no_grad():
+                                model_outputs = self.model(
+                                    input_ids=resp_ids,
+                                    labels=resp_ids,
+                                )
+                            turn['resp_gen_gpt_score'] = model_outputs.loss.item()
+                            all_scores.append(model_outputs.loss.item())
+                        else:
+                            turn['resp_gen_gpt_score'] = 'Nan'
+
+        if norm:
+            cutoff = np.quantile([-t for t in all_scores], 0.05)
+            modified_scores = np.array([cutoff if -t < cutoff else -t for t in all_scores])
+            normed_scores = (modified_scores - cutoff) / np.abs(cutoff)
+            return np.mean(normed_scores)
+        else:
+            return sum(all_scores) / len(all_scores)
 
 
 def main():
@@ -477,7 +499,7 @@ def main():
         if cfg.run_type == 'train':
             runner.train()
         elif cfg.run_type == 'predict':
-            ppl, _ = runner.validation('test')
+            ppl, _ = runner.validation('test', cfg.gpt_score_normalize)
             if cfg.ppl_level == 'bart_score':
                 logger.info("Test set Bart Score: {}".format(ppl))
             else:
