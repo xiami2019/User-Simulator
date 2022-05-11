@@ -12,3 +12,4 @@ bart_score_gpt_lm_model*
 small*
 pptod_small
 my_bartscore
+utils/__pycache__/
