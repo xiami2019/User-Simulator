@@ -2,11 +2,28 @@
 import os
 import json
 import torch
-from torch import nn
-import torch.nn.functional as F
-from operator import itemgetter
 import argparse
+from torch import nn
+from operator import itemgetter
+from torch.utils.data import Dataset
+
 from evaluator import MultiWozEvaluator
+from reader import MultiWOZReader
+from utils.utils import get_or_create_logger
+
+logger = get_or_create_logger(__name__)
+
+class MultiWOZDatasetPPTOD(Dataset):
+    def __init__(self, original_data, data_type) -> None:
+        super().__init__()
+        self.data_type = data_type
+        self.data = self.construct_data()
+
+    def construct_data(self):
+        pass
+
+    def __len__(self):
+        return len(self.data)
 
 def parse_config():
     parser = argparse.ArgumentParser()
@@ -18,9 +35,12 @@ def parse_config():
         help="True or False, whether includes db result as part of the input when generating response.")
     parser.add_argument('--add_special_decoder_token', default='True', type=str, help='Whether we discriminate the decoder start and end token for different tasks.')
     parser.add_argument('--train_data_ratio', type=float, default=1.0, help='the ratio of training data used for training the model')
+    parser.add_argument("--version", type=str, default="2.0", choices=["2.0", "2.1"])
+
     # model configuration
-    parser.add_argument('--model_name', type=str, help='t5-small, t5-base or t5-large')
-    parser.add_argument('--pretrained_path', type=str, help='the path that stores pretrained checkpoint.')
+    parser.add_argument('--backbone', type=str, default='pptod_small', help='pptod_small, pptod_base, pptod_large')
+    parser.add_argument('--ckpt', type=str, default='None', help='the path that stores pretrained checkpoint.')
+    parser.add_argument('--train_from', type=str, default=None)
 
     # training configuration
     parser.add_argument('--dropout', type=float, default=0.1)
@@ -33,7 +53,6 @@ def parse_config():
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="gradient accumulation step.")
     parser.add_argument("--ckpt_save_path", type=str, help="directory to save the model parameters.")
     return parser.parse_args()
-
 
 def get_optimizers(model, args):
     # Prepare optimizer and schedule (linear warmup and decay)
@@ -67,52 +86,28 @@ def get_optimizers(model, args):
 import argparse
 if __name__ == '__main__':
     if torch.cuda.is_available():
-        print ('Cuda is available.')
+        logger.info('Cuda is available.')
     cuda_available = torch.cuda.is_available()
     multi_gpu_training = False
     if cuda_available:
         if torch.cuda.device_count() > 1:
             multi_gpu_training = True
-            print ('Using Multi-GPU training, number of GPU is {}'.format(torch.cuda.device_count()))
+            logger.info('Using Multi-GPU training, number of GPU is {}'.format(torch.cuda.device_count()))
         else:
-            print ('Using single GPU training.')
+            logger.info('Using single GPU training.')
     else:
         pass
     args = parse_config()
     device = torch.device('cuda')
 
-    assert args.model_name.startswith('t5')
-    from transformers import T5Tokenizer
-    print ('Loading Pretrained Tokenizer...')
-    tokenizer = T5Tokenizer.from_pretrained(args.pretrained_path)
-
-    if args.use_db_as_input == 'True':
-        use_db_as_input = True
-    elif args.use_db_as_input == 'False':
-        use_db_as_input = False
-    else:
-        raise Exception('Wrong Use DB Mode!!!')
-
-    if args.add_special_decoder_token == 'True':
-        add_special_decoder_token = True
-    elif args.add_special_decoder_token == 'False':
-        add_special_decoder_token = False
-    else:
-        raise Exception('Wrong Add Special Token Mode!!!')
-
-    print ('Start loading data...')
-    from dataclass import MultiWozData
-    from config import Config
-    cfg = Config(args.data_path_prefix)
-
-    data = MultiWozData(args.model_name, tokenizer, cfg, args.data_path_prefix, shuffle_mode=args.shuffle_mode, 
-        data_mode='train', use_db_as_input=use_db_as_input, add_special_decoder_token=add_special_decoder_token, 
-        train_data_ratio=args.train_data_ratio)
-    print ('Data loaded')
+    logger.info('Start loading data...')
+    reader = MultiWOZReader(args, args.version)
+    train_dataset = MultiWOZDatasetPPTOD(reader.data['train'], 'train')
+    logger.info('Data loaded')
     evaluator = MultiWozEvaluator(data.reader, cfg)
 
     print ('Start loading model...')
-    from modelling.T5Model import T5Gen_Model
+    from T5Model import T5Gen_Model
     model = T5Gen_Model(args.pretrained_path, data.tokenizer, data.special_token_list, dropout=args.dropout, 
         add_special_decoder_token=add_special_decoder_token, is_training=True)
 
