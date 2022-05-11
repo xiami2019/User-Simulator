@@ -13,3 +13,4 @@ small*
 pptod_small
 my_bartscore
 utils/__pycache__/
+test_data.json
