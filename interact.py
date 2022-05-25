@@ -1,5 +1,4 @@
 import os
-import math
 import torch
 import random
 import argparse
@@ -29,6 +28,32 @@ device2 = torch.device('cpu')
 秋风厌倦漂泊
 夕阳赖着不走挂在墙头舍不得我
 '''
+
+# special tokens map
+mttod_to_pptod = {
+    '<bos_user>': '<sos_u>',
+    '<eos_user>': '<eos_u>',
+    '<bos_resp>': '<sos_r>',
+    '<eos_resp>': '<eos_r>',
+    '<bos_belief>': '<sos_b>',
+    '<eos_belief>': '<eos_b>',
+    '<bos_act>': '<sos_a>',
+    '<eos_act>': '<eos_a>',
+    '<bos_db>': '<sos_d>',
+    '<eos_db>': '<eos_d>',
+}
+pptod_to_mttod = {
+    '<sos_u>': '<bos_user>',
+    '<eos_u>': '<eos_user>',
+    '<sos_r>': '<bos_resp>',
+    '<eos_r>': '<eos_resp>',
+    '<sos_b>': '<bos_belief>',
+    '<eos_b>': '<eos_belief>',
+    '<sos_a>': '<bos_act>',
+    '<eos_a>': '<eos_act>',
+    '<sos_d>': '<bos_db>',
+    '<eos_d>': '<eos_db>',
+}
 
 def get_config():
     parser = argparse.ArgumentParser(description='RL config')
@@ -61,6 +86,7 @@ def get_config():
     parser.add_argument('-gpt_score_coef', type=float, default=0.5)
     parser.add_argument('-use_mean_rl_loss', action="store_true")
     parser.add_argument('-generate_results_path', type=str, default='generate_results.json')
+    parser.add_argument('-model_name', type=str, default='mttod', choices=['mttod', 'ubar', 'pptod', 'galaxy'])
     args = parser.parse_args()
 
     return args
@@ -68,27 +94,82 @@ def get_config():
 class InteractionEnvironment(object):
     def __init__(self, cfg) -> None:
         self.cfg = cfg
-        self.simulator_model = self.load_model(self.cfg.simulator_path)
-        self.dialog_model = self.load_model(self.cfg.dialog_sys_path)
-        self.simulator_tokenizer = self.load_tokenizer(self.cfg.simulator_path)
-        self.dialog_tokenizer = self.load_tokenizer(self.cfg.dialog_sys_path)
+        self.simulator_model = self.load_simulator(self.cfg.simulator_path)
+        self.dialog_model = self.load_system(self.cfg.dialog_sys_path)
+        self.simulator_tokenizer = self.load_simulator_tokenizer(self.cfg.simulator_path)
+        self.dialog_tokenizer = self.load_sys_tokenizer(self.cfg.dialog_sys_path)
         self.data_dir = self.cfg.data_dir
         db_path = os.path.join(os.path.dirname(self.data_dir), 'db')
         logger.info("Load Database from {}".format(db_path))
         self.db = MultiWozDB(db_path)
         self.get_goal_list()
 
+        # pptod prefix
+        if self.cfg.model_name == 'pptod':
+            bs_prefix_text = 'translate dialogue to belief state:'
+            da_prefix_text = 'translate dialogue to dialogue action:'
+            nlg_prefix_text = 'translate dialogue to system response:'
+            self.bs_prefix_id = self.dialog_tokenizer.convert_tokens_to_ids(self.dialog_tokenizer.tokenize(bs_prefix_text))
+            self.da_prefix_id = self.dialog_tokenizer.convert_tokens_to_ids(self.dialog_tokenizer.tokenize(da_prefix_text))
+            self.nlg_prefix_id = self.dialog_tokenizer.convert_tokens_to_ids(self.dialog_tokenizer.tokenize(nlg_prefix_text))
+            self.sos_context_token_id = self.dialog_tokenizer.convert_tokens_to_ids(['<sos_context>'])[0]
+            self.eos_context_token_id = self.dialog_tokenizer.convert_tokens_to_ids(['<eos_context>'])[0]
+
+
     @property
     def all_goals(self):
         return self.goal_list
 
-    def load_model(self, model_path):
-        logger.info("Load model from {}".format(model_path))
+    def load_simulator(self, model_path):
+        logger.info("Load simulator model from {}".format(model_path))
         if not os.path.exists(model_path):
             raise Exception('Model path is invalid!')
         return T5ForConditionalGeneration.from_pretrained(model_path)
 
-    def load_tokenizer(self, tokenizer_path):
+    def load_system(self, model_path):
+        if self.cfg.model_name == 'mttod':
+            logger.info("Load system model from {}".format(model_path))
+            if not os.path.exists(model_path):
+                raise Exception('Model path is invalid!')
+            return T5ForConditionalGeneration.from_pretrained(model_path)
+        elif self.cfg.model_name == 'ubar':
+            logger.info("Load system model from {}".format(model_path))
+            if not os.path.exists(model_path):
+                raise Exception('Model path is invalid!')
+            return GPT2LMHeadModel.from_pretrained(model_path)
+        elif self.cfg.model_name == 'pptod':
+            logger.info("Load system model from {}".format(model_path))
+            if not os.path.exists(model_path):
+                raise Exception('Model path is invalid!')
+            return T5ForConditionalGeneration.from_pretrained(model_path)
+        elif self.cfg.model_name == 'galaxy':
+            raise NotImplementedError
+
+    def load_simulator_tokenizer(self, tokenizer_path):
+        logger.info("Load simulator tokenizer from {}".format(tokenizer_path))
+        if not os.path.exists(tokenizer_path):
+            raise Exception('Tokenizer path is invalid!')
+        return T5Tokenizer.from_pretrained(tokenizer_path)
+
+    def load_sys_tokenizer(self, tokenizer_path):
+        if self.cfg.model_name == 'mttod':
+            logger.info("Load system tokenizer from {}".format(tokenizer_path))
+            if not os.path.exists(tokenizer_path):
+                raise Exception('Tokenizer path is invalid!')
+            return T5Tokenizer.from_pretrained(tokenizer_path)
+        elif self.cfg.model_name == 'ubar':
+            logger.info("Load system tokenizer from {}".format(tokenizer_path))
+            if not os.path.exists(tokenizer_path):
+                raise Exception('Tokenizer path is invalid!')
+            return GPT2Tokenizer.from_pretrained(tokenizer_path)
+        elif self.cfg.model_name == 'pptod':
+            logger.info("Load system tokenizer from {}".format(tokenizer_path))
+            if not os.path.exists(tokenizer_path):
+                raise Exception('Tokenizer path is invalid!')
+            return T5Tokenizer.from_pretrained(tokenizer_path)
+        elif self.cfg.model_name == 'galaxy':
+            raise NotImplementedError
+        
         logger.info("Load tokenizer from {}".format(tokenizer_path))
         if not os.path.exists(tokenizer_path):
             raise Exception('Tokenizer path is invalid!')
@@ -125,9 +206,15 @@ class InteractionEnvironment(object):
     def tensorize(self, ids):
         return torch.tensor(ids, dtype=torch.long)
 
-    def encode_text(self, text, tokenizer, bos_token=None, eos_token=None):
+    def encode_text(self, text, tokenizer, bos_token=None, eos_token=None, special_tokens_map=None):
         tokens = text.split() if isinstance(text, str) else text
         assert isinstance(tokens, list)
+
+        # replace special tokens
+        if special_tokens_map != None:
+            for i in range(len(tokens)):
+                if tokens[i] in special_tokens_map:
+                    tokens[i] = special_tokens_map[tokens[i]]
         
         if bos_token is not None:
             if isinstance(bos_token, str):
@@ -211,7 +298,10 @@ class InteractionEnvironment(object):
         return aspn, resp, aspn_prob, resp_prob
 
     def finalize_bspn(self, belief_outputs, belief_states_prob=None):
-        eos_belief_token_id = self.dialog_tokenizer.convert_tokens_to_ids(definitions.EOS_BELIEF_TOKEN)
+        if self.cfg.model_name == 'mttod':
+            eos_belief_token_id = self.dialog_tokenizer.convert_tokens_to_ids(definitions.EOS_BELIEF_TOKEN)
+        else:
+            eos_belief_token_id = self.dialog_tokenizer.convert_tokens_to_ids('<eos_b>')
         if belief_outputs[0] == self.dialog_tokenizer.pad_token_id:
             belief_outputs = belief_outputs[1:]
         if belief_outputs[-1] == self.dialog_tokenizer.eos_token_id:
@@ -228,13 +318,60 @@ class InteractionEnvironment(object):
         else:
             return belief_outputs[:eos_idx+1], None
 
+    def finalize_aspn(self, aspn_outputs, aspn_states_prob=None):
+        if self.cfg.model_name == 'mttod':
+            eos_action_token_id = self.dialog_tokenizer.convert_tokens_to_ids(definitions.EOS_ACTION_TOKEN)
+        else:
+            eos_action_token_id = self.dialog_tokenizer.convert_tokens_to_ids('<eos_a>')
+        if aspn_outputs[0] == self.dialog_tokenizer.pad_token_id:
+            aspn_outputs = aspn_outputs[1:]
+        if aspn_outputs[-1] == self.dialog_tokenizer.eos_token_id:
+            aspn_outputs = aspn_outputs[:-1]
+            if aspn_states_prob is not None:
+                aspn_states_prob = aspn_states_prob[:-1]
+        if eos_action_token_id not in aspn_outputs:
+            eos_idx = len(aspn_outputs) - 1
+        else:
+            eos_idx = aspn_outputs.index(eos_action_token_id)
+
+        if aspn_states_prob is not None:
+            return aspn_outputs[:eos_idx+1], aspn_states_prob[:eos_idx+1]
+        else:
+            return aspn_outputs[:eos_idx+1], None
+
+    def finalize_resp(self, resp_outputs, resp_states_prob=None):
+        if self.cfg.model_name == 'mttod':
+            eos_resp_token_id = self.dialog_tokenizer.convert_tokens_to_ids(definitions.EOS_RESP_TOKEN)
+        else:
+            eos_resp_token_id = self.dialog_tokenizer.convert_tokens_to_ids('<eos_r>')
+        if resp_outputs[0] == self.dialog_tokenizer.pad_token_id:
+            resp_outputs = resp_outputs[1:]
+        if resp_outputs[-1] == self.dialog_tokenizer.eos_token_id:
+            resp_outputs = resp_outputs[:-1]
+            if resp_states_prob is not None:
+                resp_states_prob = resp_states_prob[:-1]
+        if eos_resp_token_id not in resp_outputs:
+            eos_idx = len(resp_outputs) - 1
+        else:
+            eos_idx = resp_outputs.index(eos_resp_token_id)
+
+        if resp_states_prob is not None:
+            return resp_outputs[:eos_idx+1], resp_states_prob[:eos_idx+1]
+        else:
+            return resp_outputs[:eos_idx+1], None
+
     def bspn_to_constraint_dict(self, bspn):
         bspn = bspn.split() if isinstance(bspn, str) else bspn
+
+        if self.cfg.model_name == 'mttod':
+            eos_belief_token = definitions.EOS_BELIEF_TOKEN
+        else:
+            eos_belief_token = '<eos_b>'
 
         constraint_dict = OrderedDict()
         domain, slot = None, None
         for token in bspn:
-            if token == definitions.EOS_BELIEF_TOKEN:
+            if token == eos_belief_token:
                 break
 
             if token.startswith("["):
@@ -442,12 +579,14 @@ class InteractionEnvironment(object):
                 
                 single_turn['sys_act'] = ' '.join(system_act[1:-1])
                 single_turn['sys'] = ' '.join(system_resp[1:-1])
-                log.append(single_turn.copy())
-                single_turn = {}
 
                 # update dialog history
                 dialog_history.append(user_utterance)
                 dialog_history.append(system_resp)
+
+                log.append(single_turn.copy())
+                single_turn = {}
+
                 user_utterance = None
                 turn_domain = None
 
@@ -514,6 +653,388 @@ class InteractionEnvironment(object):
         dial_gen['log'] = log
         dial_gen['final_goal_state'] = convert_goal_dict_to_span(goal_state_dict)
         return dial_gen
+    
+    def generate_single_dialog_pptod(self, user_goal):
+        self.simulator_model.to(device)
+        self.dialog_model.to(device)
+
+        # clear fail info and invalid/prev_invalid field
+        for domain in user_goal['goal']:
+            if 'fail_info' in user_goal['goal'][domain]:
+                del user_goal['goal'][domain]['fail_info']
+            if 'fail_book' in user_goal['goal'][domain]:
+                del user_goal['goal'][domain]['fail_book']
+
+            if 'book' in user_goal['goal'][domain]:
+                if 'invalid' in user_goal['goal'][domain]['book']:
+                    del user_goal['goal'][domain]['book']['invalid']
+                if 'pre_invalid' in user_goal['goal'][domain]['book']:
+                    del user_goal['goal'][domain]['book']['pre_invalid']
+
+        dial_gen = {user_goal['dialog_id']: {'goal': user_goal['goal']}}
+        log = []
+        dialog_history = []
+        goal_state_dict = user_goal['goal']
+        goal_state_span = convert_goal_dict_to_span(user_goal['goal'])
+        user_utterance = None
+        turn_domain = None
+        system_act = None
+        user_act = None
+        utterance_count = 0
+        single_turn = {}
+
+        def is_continue(dial_gen):
+            if 'sys' not in single_turn and 'user' in single_turn:
+                # end up with system resp
+                return True
+            if len(goal_state_dict) == 0:
+                # goal清空后终止
+                dial_gen['terminate_reason'] = 'goal清空后终止'
+                return False
+            if len(log) >= self.cfg.max_turn_num:
+                # 超过固定轮数终止
+                dial_gen['terminate_reason'] = '超过{}轮终止'.format(self.cfg.max_turn_num)
+                return False
+            if system_act and ('[bye]' in system_act or '[thank]' in system_act):
+                dial_gen['terminate_reason'] = 'system said thank or bye'
+                return False
+            if user_act and ('[bye]' in user_act or '[thank]' in user_act):
+                dial_gen['terminate_reason'] = 'user said thank or bye'
+                return False
+            # 不满足退出条件则继续循环
+            return True
+
+        while is_continue(dial_gen): # 需要判断一个会话是否结束，满足结束条件则需要退出循环
+            if utterance_count & 1:
+                '''
+                system agent:
+                input1: bs_prefix + context
+                output1: belief states;
+                input2: da_prefix + context + db_result
+                output2: system action
+                update user's goal state;
+                input3: nlg_prefix + context + db_result
+                output3: system response
+                '''
+                utterance_count += 1
+
+                if user_utterance is None:
+                    raise Exception('Should generate user utterance first!')
+
+                # replace special tokens
+                user_utterance_ids = self.encode_text(user_utterance, self.dialog_tokenizer, special_tokens_map=mttod_to_pptod)
+                encoded_dialog_history = [self.encode_text(text, self.dialog_tokenizer, special_tokens_map=mttod_to_pptod) for text in dialog_history]
+                context = self.flatten_dial_history(encoded_dialog_history, len(user_utterance_ids) + len(self.bs_prefix_id) + 1, self.dialog_tokenizer.model_max_length)
+                input_ids = self.tensorize([self.bs_prefix_id + [self.sos_context_token_id] + context + user_utterance_ids + [self.eos_context_token_id]])
+                input_ids = input_ids.to(device)
+
+                with torch.no_grad():
+                    model_output = self.dialog_model.generate(
+                        input_ids=input_ids,
+                        eos_token_id=self.dialog_tokenizer.eos_token_id,
+                        max_length=100,
+                    )
+                belief_states_output = model_output.cpu().numpy().tolist()
+                bspn_gen, _ = self.finalize_bspn(belief_states_output[0])
+
+                bspn_gen = self.dialog_tokenizer.decode(bspn_gen, clean_up_tokenization_spaces=False)
+                single_turn['belief_states'] = bspn_gen
+
+                if turn_domain is None:
+                    raise Exception('Domain is empty')
+
+                db_token = self.bspn_to_db_pointer(bspn_gen, turn_domain)
+                dbpn_gen = self.encode_text(db_token, self.dialog_tokenizer, bos_token='<sos_d>', eos_token='<eos_d>')
+                single_turn['dbpn'] = self.dialog_tokenizer.decode(dbpn_gen)
+
+                #action generation
+                context_for_action = self.flatten_dial_history(encoded_dialog_history, len(user_utterance_ids) + len(self.da_prefix_id) + len(dbpn_gen) + 1, self.dialog_tokenizer.model_max_length)
+                input_ids_da = self.tensorize([self.da_prefix_id + [self.sos_context_token_id] + context_for_action + user_utterance_ids + [self.eos_context_token_id] + dbpn_gen])
+                input_ids_da = input_ids_da.to(device)
+
+                with torch.no_grad():
+                    model_output = self.dialog_model.generate(
+                        input_ids=input_ids_da,
+                        eos_token_id=self.dialog_tokenizer.eos_token_id,
+                        max_length=100,
+                    )
+
+                aspn_outputs = model_output.cpu().numpy().tolist()
+                aspn_gen, _ = self.finalize_aspn(aspn_outputs[0])
+                aspn_gen = self.dialog_tokenizer.decode(aspn_gen, clean_up_tokenization_spaces=False).split()
+                system_act_dict = convert_generate_action_span_to_dict(aspn_gen[1:-1])
+                goal_state_dict = update_goal_states_during_gen(goal_state_dict, system_act_dict, 'sys')
+                single_turn['sys_act'] = ' '.join(aspn_gen[1:-1])
+
+                #response generation
+                context_for_resp = self.flatten_dial_history(encoded_dialog_history, len(user_utterance_ids) + len(self.nlg_prefix_id) + len(dbpn_gen) + 1, self.dialog_tokenizer.model_max_length)
+                input_ids_resp = self.tensorize([self.nlg_prefix_id + [self.sos_context_token_id] + context_for_resp + user_utterance_ids + [self.eos_context_token_id] + dbpn_gen])
+                input_ids_resp = input_ids_resp.to(device)
+
+                with torch.no_grad():
+                    model_output = self.dialog_model.generate(
+                        input_ids=input_ids_resp,
+                        eos_token_id=self.dialog_tokenizer.eos_token_id,
+                        max_length=200,
+                    )
+                
+                resp_outputs = model_output.cpu().numpy().tolist()
+                resp_gen, _ = self.finalize_resp(resp_outputs[0])
+                resp_gen = self.dialog_tokenizer.decode(resp_gen, clean_up_tokenization_spaces=False).split()
+                single_turn['sys'] = ' '.join(resp_gen[1:-1])
+                log.append(single_turn.copy())
+                single_turn = {}
+
+                # update dialog history
+                dialog_history.append(user_utterance)
+                dialog_history.append(resp_gen)
+                user_utterance = None
+                turn_domain = None
+
+            else:
+                '''
+                user agent:
+                input: dialog history + goal state span;
+                output: user action + user utterance;
+                update user's goal state;
+                '''
+                utterance_count += 1
+
+                goal_state_span = convert_goal_dict_to_span(goal_state_dict)
+                goal_state_ids = self.encode_text(goal_state_span, self.simulator_tokenizer, bos_token=definitions.BOS_GOAL_TOEKN, eos_token=definitions.EOS_GOAL_TOKEN)
+                encoded_dialog_history = [self.encode_text(text, self.simulator_tokenizer, special_tokens_map=pptod_to_mttod) for text in dialog_history]
+                context = self.flatten_dial_history(encoded_dialog_history, len(goal_state_ids), self.simulator_tokenizer.model_max_length)
+                input_ids = self.tensorize([context + goal_state_ids + [self.simulator_tokenizer.eos_token_id]])
+                input_ids = input_ids.to(device)
+
+                with torch.no_grad():
+                    model_output = self.simulator_model.generate(
+                    input_ids=input_ids,
+                    eos_token_id=self.simulator_tokenizer.eos_token_id,
+                    max_length=100,
+                )
+
+                user_utterance_output = model_output.cpu().numpy().tolist()
+                user_act, user_utterance, _, _ = split_user_act_and_resp(self.simulator_tokenizer, user_utterance_output[0])
+                user_act = self.simulator_tokenizer.decode(user_act, clean_up_tokenization_spaces=False).split(' ')
+                user_utterance = self.simulator_tokenizer.decode(user_utterance, clean_up_tokenization_spaces=False).split(' ')
+
+                if len(user_act[1:-1]) == 0 or user_act[1][1:-1] == 'general':
+                    turn_domain = ['[general]']
+                elif user_act[1][1:-1] not in definitions.ALL_DOMAINS:
+                    # raise Exception('Invalid domain token')
+                    turn_domain = ['[general]']
+                else:
+                    turn_domain = [user_act[1]]
+
+                # only add user utterance to history
+                single_turn['user'] = ' '.join(user_utterance[1:-1])
+                single_turn['user_act'] = ' '.join(user_act[1:-1])
+
+                # update goal state
+                user_act_dict = convert_generate_action_span_to_dict(user_act[1:-1])
+                goal_state_dict = update_goal_states_during_gen(goal_state_dict, user_act_dict, 'user')
+
+        dial_gen['log'] = log
+        dial_gen['final_goal_state'] = convert_goal_dict_to_span(goal_state_dict)
+        return dial_gen
+
+    def generate_single_dialog_ubar(self, user_goal):
+        self.simulator_model.to(device)
+        self.dialog_model.to(device)
+
+        # clear fail info and invalid/prev_invalid field
+        for domain in user_goal['goal']:
+            if 'fail_info' in user_goal['goal'][domain]:
+                del user_goal['goal'][domain]['fail_info']
+            if 'fail_book' in user_goal['goal'][domain]:
+                del user_goal['goal'][domain]['fail_book']
+
+            if 'book' in user_goal['goal'][domain]:
+                if 'invalid' in user_goal['goal'][domain]['book']:
+                    del user_goal['goal'][domain]['book']['invalid']
+                if 'pre_invalid' in user_goal['goal'][domain]['book']:
+                    del user_goal['goal'][domain]['book']['pre_invalid']
+
+        dial_gen = {user_goal['dialog_id']: {'goal': user_goal['goal']}}
+        log = []
+        dialog_history = []
+        goal_state_dict = user_goal['goal']
+        goal_state_span = convert_goal_dict_to_span(user_goal['goal'])
+        user_utterance = None
+        turn_domain = None
+        system_act = None
+        user_act = None
+        utterance_count = 0
+        single_turn = {}
+
+        def is_continue(dial_gen):
+            if 'sys' not in single_turn and 'user' in single_turn:
+                # end up with system resp
+                return True
+            if len(goal_state_dict) == 0:
+                # goal清空后终止
+                dial_gen['terminate_reason'] = 'goal清空后终止'
+                return False
+            if len(log) >= self.cfg.max_turn_num:
+                # 超过固定轮数终止
+                dial_gen['terminate_reason'] = '超过{}轮终止'.format(self.cfg.max_turn_num)
+                return False
+            if system_act and ('[bye]' in system_act or '[thank]' in system_act):
+                dial_gen['terminate_reason'] = 'system said thank or bye'
+                return False
+            if user_act and ('[bye]' in user_act or '[thank]' in user_act):
+                dial_gen['terminate_reason'] = 'user said thank or bye'
+                return False
+            # 不满足退出条件则继续循环
+            return True
+
+        while is_continue(dial_gen): # 需要判断一个会话是否结束，满足结束条件则需要退出循环
+            if utterance_count & 1:
+                '''
+                system agent:
+                input1: context
+                output1: belief states;
+                input2: context + bs + db_result
+                output2: system action
+                update user's goal state;
+                input3: context + bs + db_result + act
+                output3: system response
+                '''
+                utterance_count += 1
+
+                if user_utterance is None:
+                    raise Exception('Should generate user utterance first!')
+
+                # replace special tokens
+                user_utterance_ids = self.encode_text(user_utterance, self.dialog_tokenizer, special_tokens_map=mttod_to_pptod)
+                encoded_dialog_history = [self.encode_text(text, self.dialog_tokenizer, special_tokens_map=mttod_to_pptod) for text in dialog_history]
+                context_for_bs = self.flatten_dial_history(encoded_dialog_history, len(user_utterance_ids) - 1 + 60, self.dialog_tokenizer.model_max_length)
+                input_ids = self.tensorize([context_for_bs + user_utterance_ids])
+                input_ids = input_ids.to(device)
+
+                with torch.no_grad():
+                    model_output = self.dialog_model.generate(
+                        input_ids=input_ids,
+                        pad_token_id=self.dialog_tokenizer.eos_token_id,
+                        eos_token_id=self.dialog_tokenizer.encode(['<eos_b>'])[0],
+                        max_length= input_ids.shape[1] + 60,
+                        temperature=0.7,
+                    )
+
+                belief_states_output = model_output[:, input_ids.shape[1]:]
+                belief_states_output = belief_states_output.cpu().numpy().tolist()
+                bspn_gen, _ = self.finalize_bspn(belief_states_output[0])
+                bspn_decoded = self.dialog_tokenizer.decode(bspn_gen, clean_up_tokenization_spaces=False)
+                single_turn['belief_states'] = bspn_decoded
+
+                if turn_domain is None:
+                    raise Exception('Domain is empty')
+                
+                db_token = self.bspn_to_db_pointer(bspn_decoded, turn_domain)
+                dbpn_gen = self.encode_text(db_token, self.dialog_tokenizer, bos_token='<sos_d>', eos_token='<eos_d>')
+                dbpn_decoded = self.dialog_tokenizer.decode(dbpn_gen)
+                single_turn['dbpn'] = dbpn_decoded
+
+                #action generation
+                context_for_da = self.flatten_dial_history(encoded_dialog_history, len(user_utterance_ids) + len(bspn_gen) + len(dbpn_gen) - 1 + 60, self.dialog_tokenizer.model_max_length)
+                input_ids_da = self.tensorize([context_for_da + user_utterance_ids + bspn_gen + dbpn_gen])
+                input_ids_da = input_ids_da.to(device)
+
+                with torch.no_grad():
+                    model_output = self.dialog_model.generate(
+                        input_ids=input_ids_da,
+                        pad_token_id=self.dialog_tokenizer.eos_token_id,
+                        eos_token_id=self.dialog_tokenizer.encode(['<eos_a>'])[0],
+                        max_length= input_ids_da.shape[1] + 60,
+                        temperature=0.7,
+                    )
+
+                aspn_outputs = model_output[:, input_ids_da.shape[1]:]
+                aspn_outputs = aspn_outputs.cpu().numpy().tolist()
+                aspn_gen, _ = self.finalize_aspn(aspn_outputs[0])
+                aspn_decoded = self.dialog_tokenizer.decode(aspn_gen, clean_up_tokenization_spaces=False).split()
+                system_act_dict = convert_generate_action_span_to_dict(aspn_decoded[1:-1])
+                goal_state_dict = update_goal_states_during_gen(goal_state_dict, system_act_dict, 'sys')
+                single_turn['sys_act'] = ' '.join(aspn_decoded[1:-1])
+
+                #response generation
+                context_for_resp = self.flatten_dial_history(encoded_dialog_history, len(user_utterance_ids) + len(bspn_gen) + len(dbpn_gen) + len(aspn_gen) - 1 + 200, self.dialog_tokenizer.model_max_length)
+                input_ids_resp = self.tensorize([context_for_resp + user_utterance_ids + bspn_gen + dbpn_gen + aspn_gen])
+                input_ids_resp = input_ids_resp.to(device)
+
+                with torch.no_grad():
+                    model_output = self.dialog_model.generate(
+                        input_ids=input_ids_resp,
+                        pad_token_id=self.dialog_tokenizer.eos_token_id,
+                        eos_token_id=self.dialog_tokenizer.encode(['<eos_r>'])[0],
+                        max_length= input_ids_resp.shape[1] + 200,
+                        temperature=0.7,
+                    )
+
+                resp_outputs = model_output[:, input_ids_resp.shape[1]:]
+                resp_outputs = resp_outputs.cpu().numpy().tolist()
+                resp_gen, _ = self.finalize_resp(resp_outputs[0])
+                resp_decoded = self.dialog_tokenizer.decode(resp_gen, clean_up_tokenization_spaces=False).split()
+                single_turn['sys'] = ' '.join(resp_decoded[1:-1])
+                log.append(single_turn.copy())
+                single_turn = {}
+
+                prev_text = user_utterance + bspn_decoded.split() + dbpn_decoded.split() + aspn_decoded + resp_decoded
+                dialog_history.append(prev_text)
+                user_utterance = None
+                turn_domain = None
+            
+            else:
+                '''
+                user agent:
+                input: dialog history + goal state span;
+                output: user action + user utterance;
+                update user's goal state;
+                '''
+                utterance_count += 1
+
+                goal_state_span = convert_goal_dict_to_span(goal_state_dict)
+                goal_state_ids = self.encode_text(goal_state_span, self.simulator_tokenizer, bos_token=definitions.BOS_GOAL_TOEKN, eos_token=definitions.EOS_GOAL_TOKEN)
+                encoded_dialog_history = [self.encode_text(text, self.simulator_tokenizer, special_tokens_map=pptod_to_mttod) for text in dialog_history]
+                context = self.flatten_dial_history(encoded_dialog_history, len(goal_state_ids), self.simulator_tokenizer.model_max_length)
+                input_ids = self.tensorize([context + goal_state_ids + [self.simulator_tokenizer.eos_token_id]])
+                input_ids = input_ids.to(device)
+
+                with torch.no_grad():
+                    model_output = self.simulator_model.generate(
+                    input_ids=input_ids,
+                    eos_token_id=self.simulator_tokenizer.eos_token_id,
+                    max_length=100,
+                )
+
+                user_utterance_output = model_output.cpu().numpy().tolist()
+                user_act, user_utterance, _, _ = split_user_act_and_resp(self.simulator_tokenizer, user_utterance_output[0])
+                user_act = self.simulator_tokenizer.decode(user_act, clean_up_tokenization_spaces=False).split(' ')
+                user_utterance = self.simulator_tokenizer.decode(user_utterance, clean_up_tokenization_spaces=False).split(' ')
+
+                if len(user_act[1:-1]) == 0 or user_act[1][1:-1] == 'general':
+                    turn_domain = ['[general]']
+                elif user_act[1][1:-1] not in definitions.ALL_DOMAINS:
+                    # raise Exception('Invalid domain token')
+                    turn_domain = ['[general]']
+                else:
+                    turn_domain = [user_act[1]]
+
+                # only add user utterance to history
+                single_turn['user'] = ' '.join(user_utterance[1:-1])
+                single_turn['user_act'] = ' '.join(user_act[1:-1])
+
+                # update goal state
+                user_act_dict = convert_generate_action_span_to_dict(user_act[1:-1])
+                goal_state_dict = update_goal_states_during_gen(goal_state_dict, user_act_dict, 'user')
+
+        dial_gen['log'] = log
+        dial_gen['final_goal_state'] = convert_goal_dict_to_span(goal_state_dict)
+        return dial_gen
+
+    def generate_single_dialog_galaxy(self, user_goal):
+        pass
     
     def update_model(self, loss, agent):
         '''
@@ -769,8 +1290,6 @@ class InteractionEnvironment(object):
                 usr_len = len(turn['user_act_resp_prob'])
                 sys_len = len(turn['sys_act_resp_prob'])
 
-                len(turn['bspn_prob'])
-
                 for _ in range(usr_len):
                     usr_rewards.insert(0, user_reward)
                     user_reward = user_reward * self.cfg.discount_factor
@@ -889,15 +1408,6 @@ class InteractionEnvironment(object):
             else:
                 logger.info('Epoch: {}; Avg rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
 
-            # if self.cfg.use_nsp_score_as_reward and self.cfg.use_ppl_as_reward:
-            #     logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
-            # elif self.cfg.use_ppl_as_reward:
-            #     logger.info('Epoch: {}; Avg success rewards: {}; Avg ppl rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_ppl_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
-            # elif self.cfg.use_nsp_score_as_reward:
-            #     logger.info('Epoch: {}; Avg success rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
-            # else:
-            #     logger.info('Epoch: {}; Avg rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))
-
             success, match = self.rl_validation(evaluator_dev)
             if success > best_success:
                 best_success = success
@@ -917,6 +1427,13 @@ if __name__ == '__main__':
     蓦然间，抬起头，才发现
     '''
     cfg = get_config()
+
+    # different tod model
+    if cfg.model_name == 'pptod':
+        cfg.dialog_sys_path = './pptod_small_finetune/ckpt-epoch10'
+    elif cfg.model_name == 'ubar':
+        cfg.dialog_sys_path = './distilgpt2_finetune/ckpt-epoch35'
+
     interaction = InteractionEnvironment(cfg)
     dialogs_gen = []
     if cfg.do_rl_training:
@@ -932,7 +1449,14 @@ if __name__ == '__main__':
     else:
         count = 0
         for goal in tqdm(interaction.all_goals['test']):
-            dial_gen = interaction.generate_single_dialog(goal)
+            if cfg.model_name == 'mttod':
+                dial_gen = interaction.generate_single_dialog(goal)
+            elif cfg.model_name == 'pptod':
+                dial_gen = interaction.generate_single_dialog_pptod(goal)
+            elif cfg.model_name == 'ubar':
+                dial_gen = interaction.generate_single_dialog_ubar(goal)
+            elif cfg.model_name == 'galaxy':
+                dial_gen = interaction.generate_single_dialog_galaxy(goal)
             dialogs_gen.append(dial_gen)
     
         save_json(dialogs_gen, cfg.generate_results_path)

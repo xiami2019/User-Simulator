@@ -133,7 +133,7 @@ class BaseIterator(object):
 
         return all_batches, num_training_steps, num_dials, num_turns
 
-    def flatten_dial_history(self, dial_history, len_postfix, context_size):
+    def flatten_dial_history(self, dial_history, len_postfix, context_size=-1):
         if context_size > 0:
             context_size -= 1
 
@@ -348,7 +348,8 @@ class BaseReader(object):
 
         self.data_dir = self.get_data_dir()
 
-        encoded_data_path = os.path.join(self.data_dir, "encoded_data.pkl")
+        # encoded_data_path = os.path.join(self.data_dir, "encoded_data.pkl")
+        encoded_data_path = os.path.join(self.data_dir, "encoded_data_{}.pkl".format(cfg.model_name))
 
         if os.path.exists(encoded_data_path):
             logger.info("Load encoded data from {}".format(encoded_data_path))
@@ -486,20 +487,50 @@ class MultiWOZReader(BaseReader):
         for fn, dial in tqdm(data.items(), desc=data_type, total=len(data)):
             encoded_dial = []
 
-            accum_constraint_dict = {}
-            for t in dial["log"]:
-                turn_constrain_dict = self.bspn_to_constraint_dict(t["constraint"])
-                for domain, sv_dict in turn_constrain_dict.items():
-                    if domain not in accum_constraint_dict:
-                        accum_constraint_dict[domain] = {}
+            if self.cfg.model_name == 'pptod' or self.cfg.model_name == 'ubar':
+                bos_user_token = '<sos_u>'
+                eos_user_token = '<eos_u>'
 
-                    for s, v in sv_dict.items():
-                        if s not in accum_constraint_dict[domain]:
-                            accum_constraint_dict[domain][s] = []
+                bos_resp_token = '<sos_r>'
+                eos_resp_token = '<eos_r>'
 
-                        accum_constraint_dict[domain][s].append(v)
+                bos_bspn_token = '<sos_b>'
+                eos_bspn_token = '<eos_b>'
 
-            prev_bspn = ""
+                bos_sys_aspn_token = '<sos_a>'
+                eos_sys_aspn_token = '<eos_a>'
+
+                bos_usr_aspn_token = definitions.BOS_USER_ACTION_TOKEN # not defined in PPTOD
+                eos_usr_aspn_token = definitions.EOS_USER_ACTION_TOKEN # not defined in PPTOD
+
+                bos_goal_token = definitions.BOS_GOAL_TOEKN # not defined in PPTOD
+                eos_goal_token = definitions.EOS_GOAL_TOKEN # not defined in PPTOD
+
+                bos_dbpn_token = '<sos_d>' 
+                eos_dbpn_token = '<eos_d>'
+
+            else: # MTTOD
+                bos_user_token = definitions.BOS_USER_TOKEN
+                eos_user_token = definitions.EOS_USER_TOKEN
+
+                bos_resp_token = definitions.BOS_RESP_TOKEN
+                eos_resp_token = definitions.EOS_RESP_TOKEN
+
+                bos_bspn_token = definitions.BOS_BELIEF_TOKEN
+                eos_bspn_token = definitions.EOS_BELIEF_TOKEN
+
+                bos_sys_aspn_token = definitions.BOS_ACTION_TOKEN
+                eos_sys_aspn_token = definitions.EOS_ACTION_TOKEN
+
+                bos_usr_aspn_token = definitions.BOS_USER_ACTION_TOKEN
+                eos_usr_aspn_token = definitions.EOS_USER_ACTION_TOKEN
+
+                bos_goal_token = definitions.BOS_GOAL_TOEKN
+                eos_goal_token = definitions.EOS_GOAL_TOKEN
+
+                bos_dbpn_token = definitions.BOS_DB_TOKEN
+                eos_dbpn_token = definitions.EOS_DB_TOKEN
+
             for idx, t in enumerate(dial["log"]):
                 enc = {}
                 enc["dial_id"] = fn
@@ -512,34 +543,26 @@ class MultiWOZReader(BaseReader):
                 target_domain = target_domain[1:-1]
 
                 user_ids = self.encode_text(t["user"],
-                                            bos_token=definitions.BOS_USER_TOKEN,
-                                            eos_token=definitions.EOS_USER_TOKEN)
+                                            bos_token=bos_user_token,
+                                            eos_token=eos_user_token)
 
                 enc["user"] = user_ids
 
                 usdx_ids = self.encode_text(t["user_delex"],
-                                            bos_token=definitions.BOS_USER_TOKEN,
-                                            eos_token=definitions.EOS_USER_TOKEN)
+                                            bos_token=bos_user_token,
+                                            eos_token=eos_user_token)
 
                 resp_ids = self.encode_text(t["nodelx_resp"],
-                                            bos_token=definitions.BOS_RESP_TOKEN,
-                                            eos_token=definitions.EOS_RESP_TOKEN)
+                                            bos_token=bos_resp_token,
+                                            eos_token=eos_resp_token)
 
                 enc["resp"] = resp_ids
 
                 redx_ids = self.encode_text(t["resp"],
-                                            bos_token=definitions.BOS_RESP_TOKEN,
-                                            eos_token=definitions.EOS_RESP_TOKEN)
+                                            bos_token=bos_resp_token,
+                                            eos_token=eos_resp_token)
 
                 enc["redx"] = redx_ids
-
-                '''
-                bspn_ids = self.encode_text(t["constraint"],
-                                            bos_token=definitions.BOS_BELIEF_TOKEN,
-                                            eos_token=definitions.EOS_BELIEF_TOKEN)
-
-                enc["bspn"] = bspn_ids
-                '''
 
                 constraint_dict = self.bspn_to_constraint_dict(t["constraint"])
                 ordered_constraint_dict = OrderedDict()
@@ -559,21 +582,21 @@ class MultiWOZReader(BaseReader):
                 ordered_bspn = self.constraint_dict_to_bspn(ordered_constraint_dict)
 
                 bspn_ids = self.encode_text(ordered_bspn,
-                                            bos_token=definitions.BOS_BELIEF_TOKEN,
-                                            eos_token=definitions.EOS_BELIEF_TOKEN)
+                                            bos_token=bos_bspn_token,
+                                            eos_token=eos_bspn_token)
 
                 enc["bspn"] = bspn_ids
 
                 aspn_ids = self.encode_text(t["sys_act"],
-                                            bos_token=definitions.BOS_ACTION_TOKEN,
-                                            eos_token=definitions.EOS_ACTION_TOKEN)
+                                            bos_token=bos_sys_aspn_token,
+                                            eos_token=eos_sys_aspn_token)
 
                 enc["aspn"] = aspn_ids
 
-                user_aspn_ids = self.encode_text(t['user_act'], bos_token=definitions.BOS_USER_ACTION_TOKEN, eos_token=definitions.EOS_USER_ACTION_TOKEN)
+                user_aspn_ids = self.encode_text(t['user_act'], bos_token=bos_usr_aspn_token, eos_token=eos_usr_aspn_token)
                 enc["user_aspn"] = user_aspn_ids
 
-                goal_ids = self.encode_text(t['goal_state'], bos_token=definitions.BOS_GOAL_TOEKN, eos_token=definitions.EOS_GOAL_TOKEN)
+                goal_ids = self.encode_text(t['goal_state'], bos_token=bos_goal_token, eos_token=eos_goal_token)
                 enc["goal_state"] = goal_ids
 
                 pointer = enc["pointer"][:-2]
@@ -583,8 +606,8 @@ class MultiWOZReader(BaseReader):
                     db_token = "[db_{}]".format(pointer.index(1))
 
                 dbpn_ids = self.encode_text(db_token,
-                                            bos_token=definitions.BOS_DB_TOKEN,
-                                            eos_token=definitions.EOS_DB_TOKEN)
+                                            bos_token=bos_dbpn_token,
+                                            eos_token=eos_dbpn_token)
 
                 enc["dbpn"] = dbpn_ids
 
@@ -592,24 +615,6 @@ class MultiWOZReader(BaseReader):
                         len(enc["redx"]) == 0 or len(enc["bspn"]) == 0 or
                         len(enc["aspn"]) == 0 or len(enc["dbpn"]) == 0):
                     raise ValueError(fn, idx)
-
-                # NOTE: if curr_constraint_dict does not include span[domain][slot], remove span[domain][slot] ??
-
-                user_span = self.get_span(
-                    target_domain,
-                    self.tokenizer.convert_ids_to_tokens(user_ids),
-                    self.tokenizer.convert_ids_to_tokens(usdx_ids),
-                    accum_constraint_dict)
-
-                enc["user_span"] = user_span
-
-                resp_span = self.get_span(
-                    target_domain,
-                    self.tokenizer.convert_ids_to_tokens(resp_ids),
-                    self.tokenizer.convert_ids_to_tokens(redx_ids),
-                    accum_constraint_dict)
-
-                enc["resp_span"] = resp_span
 
                 encoded_dial.append(enc)
 
@@ -620,10 +625,15 @@ class MultiWOZReader(BaseReader):
     def bspn_to_constraint_dict(self, bspn):
         bspn = bspn.split() if isinstance(bspn, str) else bspn
 
+        if self.cfg.model_name == 'pptod' or self.cfg.model_name == 'ubar':
+            eos_belief_token = '<eos_b>'
+        else:
+            eos_belief_token = definitions.EOS_BELIEF_TOKEN
+
         constraint_dict = OrderedDict()
         domain, slot = None, None
         for token in bspn:
-            if token == definitions.EOS_BELIEF_TOKEN:
+            if token == eos_belief_token:
                 break
 
             if token.startswith("["):

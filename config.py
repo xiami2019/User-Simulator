@@ -90,7 +90,7 @@ def add_config(parser):
     group.add_argument("-log_frequency", type=int, default=100)
     group.add_argument("-max_to_keep_ckpt", type=int, default=10)
     group.add_argument("-num_gpus", type=int, default=1)
-    group.add_argument("-additional_model_name", type=str, default='MTTOD', choices=['MTTOD', 'PPTOD', 'UBAR', 'Galaxy'])
+    group.add_argument("-model_name", type=str, default='mttod', help = 'mttod, pptod, ubar, galaxy')
 
 
 def check_config(parser):

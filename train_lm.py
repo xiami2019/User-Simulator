@@ -54,8 +54,6 @@ def get_config_without_unknown():
     parser.add_argument('-compute_for_single', action="store_true")
     parser.add_argument('-nsp_score', type=str, default='soft', choices=['soft', 'hard'])
     parser.add_argument("-gpt_score_normalize", action='store_true')
-    parser.add_argument("-gpt_score_singe_side", action='store_true')
-    parser.add_argument("-agent", type=str, default=None, choices=['usr', 'sys'])
 
     args, unknown = parser.parse_known_args()
 
@@ -186,7 +184,7 @@ class BertRunner(BaseRunner):
             self.model.zero_grad()
             training_avg_loss = 0
 
-            for step, batch in enumerate(tqdm(train_dataLoader, desc='Epoch {} Traning'.format(epoch))):
+            for step, batch in enumerate(tqdm(train_dataLoader, desc='Epoch {} Training'.format(epoch))):
                 input_ids, label_ids = batch
                 input_ids = input_ids.to(self.cfg.device)
                 label_ids = label_ids.to(self.cfg.device)
@@ -453,10 +451,16 @@ class LMRunner(BaseRunner):
                                     input_ids=user_ids,
                                     labels=user_ids,
                                 )
-                            turn['user_gpt_score'] = model_outputs.loss.item()
+                            if self.cfg.gpt_score_singe_side and self.cfg.agent == 'usr':
+                                turn['user_gpt_score_with_user_gpt_model'] = model_outputs.loss.item()
+                            else:
+                                turn['user_gpt_score'] = model_outputs.loss.item()
                             all_scores.append(model_outputs.loss.item())
                         else:
-                            turn['user_gpt_score'] = 'Nan'
+                            if self.cfg.gpt_score_singe_side and self.cfg.agent == 'usr':
+                                turn['user_gpt_score_with_user_gpt_model'] = 'Nan'
+                            else:
+                                turn['user_gpt_score'] = 'Nan'
 
                     if self.cfg.gpt_score_singe_side == False or (self.cfg.gpt_score_singe_side and self.cfg.agent == 'sys'):
                         if len(resp_ids) > 1:
@@ -465,10 +469,16 @@ class LMRunner(BaseRunner):
                                     input_ids=resp_ids,
                                     labels=resp_ids,
                                 )
-                            turn['resp_gen_gpt_score'] = model_outputs.loss.item()
+                            if self.cfg.gpt_score_singe_side and self.cfg.agent == 'sys':
+                                turn['resp_gen_gpt_score_with_sys_gpt_model'] = model_outputs.loss.item()
+                            else:
+                                turn['resp_gen_gpt_score'] = model_outputs.loss.item()
                             all_scores.append(model_outputs.loss.item())
                         else:
-                            turn['resp_gen_gpt_score'] = 'Nan'
+                            if self.cfg.gpt_score_singe_side and self.cfg.agent == 'sys':
+                                turn['resp_gen_gpt_score_with_sys_gpt_model'] = 'Nan'
+                            else:
+                                turn['resp_gen_gpt_score'] = 'Nan'
 
         if norm:
             cutoff = np.quantile([-t for t in all_scores], 0.05)

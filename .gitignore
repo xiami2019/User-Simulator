@@ -14,3 +14,13 @@ pptod_small
 my_bartscore
 utils/__pycache__/
 test_data.json
+epoch_9_best_ckpt.zip
+galaxy.zip
+pptod_offline*
+test_data_online*
+ubar_offline*
+__MACOSX
+galaxy_model
+distilgpt2_finetune
+galaxy_model_finetune
+pptod_small_finetune

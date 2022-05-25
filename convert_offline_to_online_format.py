@@ -1,7 +1,13 @@
 from utils.utils import load_json, save_json
 
-offline_path = 'dialog_t5_small_offline_ep11.json'
-online_path = 'dialog_t5_small_offline_ep11_onlineformat.json'
+# offline_path = 'dialog_t5_small_offline_ep11.json'
+# online_path = 'dialog_t5_small_offline_ep11_onlineformat.json'
+
+# offline_path = 'pptod_offline.json'
+# online_path = 'pptod_offline_onlineformat.json'
+
+offline_path = 'ubar_offline.json'
+online_path = 'ubar_offline_onlineformat.json'
 
 offline_data = load_json(offline_path)
 online_data = []

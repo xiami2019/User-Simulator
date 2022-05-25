@@ -676,6 +676,7 @@ def convert_results_format(results):
     return processed_results
 
 def convert_results_format_to_mwzeval(result):
+    # 转成官方的评测脚本格式
     def bspn_to_constraint_dict(bspn):
         bspn = bspn.split() if isinstance(bspn, str) else bspn
 
