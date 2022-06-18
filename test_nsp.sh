@@ -1,1 +1,0 @@
-./bert_nsp_model_lr_1e_5_bs_64_ep40_1/ckpt-epoch11

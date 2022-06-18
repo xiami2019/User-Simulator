@@ -2,7 +2,6 @@ import os
 import math
 import argparse
 import logging
-import numpy as np
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
 from nltk.util import ngrams
