@@ -1,12 +1,14 @@
 # Is MultiWOZ a Solved Task? An Interactive TOD Evaluation Framework with User Simulator
-
+This is the code implementation of our paper.
 ## Data Preprocess
+Our experiments mainly focus on MultiWOZ 2.0.
+You should unzip the data.zip at first and then run this script:
 ```
 python preprocess.py -version 2.0
 ```
 
 ## Supervised Learning
-Useing seq2seq training based on t5 models (Simplified version of MTTOD).
+Seq-to-seq training based on t5 models (simplified version of MTTOD).
 ### User Simulator Supvervised Training
 ```
 python main.py -version 2.0 -agent_type us -run_type train -ururu -backbone t5-small -model_dir simulator_t5_small -epoch 20
@@ -17,7 +19,7 @@ python main.py -version 2.0 -agent_type ds -run_type train -ururu -backbone t5-s
 ```
 
 ### Interaction
-Interaction between a user simulator and a dialogue system (either SL-based or RL-based). Generate new dialogue sessions based on user goals from test or dev set.
+Conduct interactions between a user simulator and a dialogue system (either SL-based models or RL-based models). Generate dialogue sessions based on user goals from test or dev set. This script can be used for different dialogue models(mttod, ubar, pptod).
 ```
 python interact.py -simulator_path ./your_simulator_model_dir/checkpoint -dialog_sys_path ./your_dialogue_model_dir/your_checkpoint -model_name mttod -generate_results_path output.json
 ```
@@ -92,4 +94,13 @@ python pptod.py --backbone pptod_small --run_type train --model_dir pptod_model
 ```
 python pptod.py --ckpt ./pptod_model/checkpoint --run_type predict --pred_data_type test
 ```
-
+<!-- ### Galayx
+We also incorporated Galaxy into our codes. However, our implementation did not achieve the performance reported in the original paper and thus we did not list the results of Galaxy in our paper.
+#### Galaxy Training
+```
+python galaxy_finetune.py --save_dir galaxy_model_finetune
+```
+#### Galaxy Evluation
+```
+python galaxy_finetune.py --run_type predict
+``` -->
