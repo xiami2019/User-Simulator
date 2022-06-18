@@ -265,7 +265,7 @@ class MultiWOZIterator(BaseIterator):
 
                 yield tensor_encoder_input_ids, tensor_resp_label_ids, None
 
-    def get_data_iterator_ds(self, all_batches, task, ururu, context_size=-1):
+    def get_data_iterator_ds(self, all_batches, ururu, context_size=-1):
         # data iterator for training dialogue system
         for dial_batch in all_batches:
             batch_encoder_input_ids = []
@@ -297,9 +297,9 @@ class MultiWOZIterator(BaseIterator):
                     dial_resp_label_ids.append(resp_label_ids)
 
                     if ururu:
-                            turn_text = turn["user"] + turn["redx"]
+                        turn_text = turn["user"] + turn["redx"]
                     else:
-                            turn_text = turn["user"] + bspn + turn["dbpn"] + turn["aspn"] + turn["redx"]
+                        turn_text = turn["user"] + bspn + turn["dbpn"] + turn["aspn"] + turn["redx"]
 
                     dial_history.append(turn_text)
 

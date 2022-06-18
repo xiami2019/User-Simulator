@@ -650,10 +650,14 @@ class MultiWOZRunner(BaseRunner):
                 attention_mask = torch.where(
                     batch_encoder_input_ids == self.reader.pad_token_id, 0, 1)
 
+                bspn_decoder_input_ids = self.iterator.tensorize([[self.reader.pad_token_id] + [self.reader.tokenizer.convert_tokens_to_ids(definitions.BOS_BELIEF_TOKEN)] for _ in range(batch_encoder_input_ids.shape[0])])
+                bspn_decoder_input_ids = bspn_decoder_input_ids.to(self.cfg.device)
+
                 # belief tracking
                 with torch.no_grad():
                     belief_outputs = self.model.generate(input_ids=batch_encoder_input_ids,
                                                          attention_mask=attention_mask,
+                                                         decoder_input_ids=bspn_decoder_input_ids,
                                                          eos_token_id=self.reader.eos_token_id,
                                                          max_length=200)
 
@@ -765,11 +769,16 @@ class MultiWOZRunner(BaseRunner):
                     else:
                         pv_aspn = turn["aspn_gen"]
 
+                    # if self.cfg.use_true_prev_resp:
+                    #     if self.cfg.task == "e2e":
+                    #         pv_resp = turn["redx"]
+                    #     else:
+                    #         pv_resp = turn["resp"]
+                    # else:
+                    #     pv_resp = turn["resp_gen"]
+
                     if self.cfg.use_true_prev_resp:
-                        if self.cfg.task == "e2e":
-                            pv_resp = turn["redx"]
-                        else:
-                            pv_resp = turn["resp"]
+                        pv_resp = turn["redx"]
                     else:
                         pv_resp = turn["resp_gen"]
 
@@ -856,16 +865,19 @@ class MultiWOZRunner(BaseRunner):
                         max_length=200
                     )
 
+                model_outputs = model_outputs.cpu().numpy().tolist()
+
                 for t, turn in enumerate(turn_batch):
-                    output_tokens = self.reader.tokenizer.decode(model_outputs[t]).split(' ')
-                    user_act, user_utterance, _, _ = split_user_act_and_resp(self.reader.tokenizer, output_tokens)
+                    user_act, user_utterance, _, _ = split_user_act_and_resp(self.reader.tokenizer, model_outputs[t])
+                    user_act = self.reader.tokenizer.decode(user_act, clean_up_tokenization_spaces=False).split()
+                    user_utterance = self.reader.tokenizer.decode(user_utterance, clean_up_tokenization_spaces=False).split()
                     user_act = ' '.join(user_act[1:-1])
                     user_utterance = ' '.join(user_utterance[1:-1])
                     turn['user_gen'] = user_utterance
                     turn['user_act_gen'] = user_act
                 
                     pv_text = copy.copy(turn['user'])
-                    pv_text = pv_text + turn['resp']
+                    pv_text = pv_text + turn['redx']
                     dial_history[t].append(pv_text)
             
             result = self.iterator.get_readable_batch(dial_batch)

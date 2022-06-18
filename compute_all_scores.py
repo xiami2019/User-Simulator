@@ -95,7 +95,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Argument for evaluation")
 
     parser.add_argument("-data_type", type=str, default="test", choices=["dev", "test"])
-    parser.add_argument("-eval_type", type=str, default='offline', choices=['offline', 'online'])
+    parser.add_argument("-eval_type", type=str, default='online', choices=['offline', 'online'])
     parser.add_argument("-output_result_path", type=str, required=True)
     parser.add_argument("-config_dir", type=str, required=True)
     parser.add_argument("-use_inform_success", type=bool, default=True)

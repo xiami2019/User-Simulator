@@ -60,7 +60,7 @@ def get_config():
     parser.add_argument("-rl_dial_one_epoch", type=int, default=200)
     parser.add_argument("-rl_batch_size", type=int, default=1)
     parser.add_argument("-epochs", type=int, default=20)
-    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch12')
+    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small_ur/ckpt-epoch11')
     parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch11')
     parser.add_argument("-simulator_save_path", type=str, default=None)
     parser.add_argument("-dialog_save_path", type=str, default=None)
@@ -79,11 +79,11 @@ def get_config():
     parser.add_argument('-use_nsp_score_as_reward', action="store_true")
     parser.add_argument('-nsp_ckpt', type=str, default='./bert_nsp_model_lr_1e_5_1/ckpt-epoch9')
     parser.add_argument('-gpt_score_ckpt', type=str, default='./bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6')
-    parser.add_argument('-nsp_coef', type=float, default=0.5)
-    parser.add_argument('-ppl_coef', type=float, default=0.5)
+    parser.add_argument('-nsp_coef', type=float, default=0.1)
+    parser.add_argument('-ppl_coef', type=float, default=0.1)
     parser.add_argument('-use_bart_score', action="store_true")
     parser.add_argument('-use_gpt_score_as_reward', action="store_true")
-    parser.add_argument('-gpt_score_coef', type=float, default=0.5)
+    parser.add_argument('-gpt_score_coef', type=float, default=0.1)
     parser.add_argument('-use_mean_rl_loss', action="store_true")
     parser.add_argument('-generate_results_path', type=str, default='generate_results.json')
     parser.add_argument('-model_name', type=str, default='mttod', choices=['mttod', 'ubar', 'pptod', 'galaxy'])
@@ -580,7 +580,7 @@ class InteractionEnvironment(object):
                 single_turn['sys_act'] = ' '.join(system_act[1:-1])
                 single_turn['sys'] = ' '.join(system_resp[1:-1])
 
-                # update dialog history
+                # update dialog history with ur format
                 dialog_history.append(user_utterance)
                 dialog_history.append(system_resp)
 
@@ -859,6 +859,7 @@ class InteractionEnvironment(object):
         dial_gen = {user_goal['dialog_id']: {'goal': user_goal['goal']}}
         log = []
         dialog_history = []
+        dialog_history_for_us = []
         goal_state_dict = user_goal['goal']
         goal_state_span = convert_goal_dict_to_span(user_goal['goal'])
         user_utterance = None
@@ -982,6 +983,8 @@ class InteractionEnvironment(object):
 
                 prev_text = user_utterance + bspn_decoded.split() + dbpn_decoded.split() + aspn_decoded + resp_decoded
                 dialog_history.append(prev_text)
+                dialog_history_for_us.append(user_utterance)
+                dialog_history_for_us.append(resp_decoded)
                 user_utterance = None
                 turn_domain = None
             
@@ -996,7 +999,7 @@ class InteractionEnvironment(object):
 
                 goal_state_span = convert_goal_dict_to_span(goal_state_dict)
                 goal_state_ids = self.encode_text(goal_state_span, self.simulator_tokenizer, bos_token=definitions.BOS_GOAL_TOEKN, eos_token=definitions.EOS_GOAL_TOKEN)
-                encoded_dialog_history = [self.encode_text(text, self.simulator_tokenizer, special_tokens_map=pptod_to_mttod) for text in dialog_history]
+                encoded_dialog_history = [self.encode_text(text, self.simulator_tokenizer, special_tokens_map=pptod_to_mttod) for text in dialog_history_for_us]
                 context = self.flatten_dial_history(encoded_dialog_history, len(goal_state_ids), self.simulator_tokenizer.model_max_length)
                 input_ids = self.tensorize([context + goal_state_ids + [self.simulator_tokenizer.eos_token_id]])
                 input_ids = input_ids.to(device)
@@ -1370,34 +1373,37 @@ class InteractionEnvironment(object):
 
             for agent in ['usr', 'sys']:
                 for i in tqdm(range(n_batch), desc='Reinforcement Learning ({})'.format(agent)):
-                    
-                    start_idx = i * self.cfg.rl_batch_size
-                    end_idx = (i + 1) * self.cfg.rl_batch_size
-                    dial_goals = self.goal_list['train'][start_idx:end_idx]
+                    try:
+                        start_idx = i * self.cfg.rl_batch_size
+                        end_idx = (i + 1) * self.cfg.rl_batch_size
+                        dial_goals = self.goal_list['train'][start_idx:end_idx]
 
-                    gen_dial_batch = []
-                    for goal in dial_goals:
-                        dial_gen = self.generate_single_dialog(goal, with_logprob=True, agent=agent)
-                        gen_dial_batch.append(dial_gen)
-                    gen_dial_batch = convert_results_format(gen_dial_batch)
-                    avg_rewards = self.get_success_reward(gen_dial_batch, evaluator)
-                    if self.cfg.use_ppl_as_reward:
-                        ppl_reward = self.get_ppl_reward(gen_dial_batch, ppl_model, ppl_tokenizer)
-                        epoch_avg_ppl_rewards += ppl_reward
-                    if self.cfg.use_nsp_score_as_reward:
-                        nsp_reward = self.get_nsp_score_reward(gen_dial_batch, nsp_score_model, nsp_score_tokenizer)
-                        epoch_avg_nsp_rewards += nsp_reward
-                    if self.cfg.use_gpt_score_as_reward:
-                        gpt_score_reward = self.get_gpt_score_reward(gen_dial_batch, gpt_score_model, gpt_score_tokenizer)
-                        epoch_avg_gpt_score_rewards += gpt_score_reward
-                    rl_loss = self.get_rl_loss(gen_dial_batch, agent)
-                    epoch_avg_rl_loss += rl_loss.item()
-                    self.update_model(rl_loss, agent)
+                        gen_dial_batch = []
+                        for goal in dial_goals:
+                            dial_gen = self.generate_single_dialog(goal, with_logprob=True, agent=agent)
+                            gen_dial_batch.append(dial_gen)
+                        gen_dial_batch = convert_results_format(gen_dial_batch)
+                        avg_rewards = self.get_success_reward(gen_dial_batch, evaluator)
+                        if self.cfg.use_ppl_as_reward:
+                            ppl_reward = self.get_ppl_reward(gen_dial_batch, ppl_model, ppl_tokenizer)
+                            epoch_avg_ppl_rewards += ppl_reward
+                        if self.cfg.use_nsp_score_as_reward:
+                            nsp_reward = self.get_nsp_score_reward(gen_dial_batch, nsp_score_model, nsp_score_tokenizer)
+                            epoch_avg_nsp_rewards += nsp_reward
+                        if self.cfg.use_gpt_score_as_reward:
+                            gpt_score_reward = self.get_gpt_score_reward(gen_dial_batch, gpt_score_model, gpt_score_tokenizer)
+                            epoch_avg_gpt_score_rewards += gpt_score_reward
+                        rl_loss = self.get_rl_loss(gen_dial_batch, agent)
+                        epoch_avg_rl_loss += rl_loss.item()
+                        self.update_model(rl_loss, agent)
 
-                    del rl_loss
-                    del gen_dial_batch
-                    torch.cuda.empty_cache()
-                    epoch_avg_rewards += avg_rewards
+                        del rl_loss
+                        del gen_dial_batch
+                        torch.cuda.empty_cache()
+                        epoch_avg_rewards += avg_rewards
+
+                    except RuntimeError:
+                        logger.info('CUDA Out of Memory.')
 
             if self.cfg.use_nsp_score_as_reward and self.cfg.use_gpt_score_as_reward:
                 logger.info('Epoch: {}; Avg success rewards: {}; Avg gpt score rewards: {}; Avg nsp rewards: {}; Avg RL Loss: {}'.format(epoch, epoch_avg_rewards / (2 * n_batch), epoch_avg_gpt_score_rewards / (2 * n_batch), epoch_avg_nsp_rewards / (2 * n_batch), epoch_avg_rl_loss / (2 * n_batch)))

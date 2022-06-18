@@ -24,3 +24,7 @@ galaxy_model
 distilgpt2_finetune
 galaxy_model_finetune
 pptod_small_finetune
+dialog_rl_v*
+generate_test*
+mttod_offline*
+mttod_rl_offline*

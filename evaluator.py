@@ -824,8 +824,9 @@ if __name__ == "__main__":
     original_data = load_json(args.output_result_path)
     if args.eval_type == 'online':
         data = convert_results_format(original_data)
-        # data = original_data
         mwzeval_data = convert_results_format_to_mwzeval(original_data)
+    else:
+        data = original_data
 
     dial_by_domain = load_json("data/MultiWOZ_2.0/dial_by_domain.json")
 
