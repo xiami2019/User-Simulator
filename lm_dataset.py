@@ -1,8 +1,3 @@
-'''
-2022.4.14
-你说人生艳丽我没有异议
-你说人生忧郁我不言语
-'''
 import os
 import json
 import torch

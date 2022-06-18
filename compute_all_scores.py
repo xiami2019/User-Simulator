@@ -28,7 +28,6 @@ def compute_avg_len(data):
             max_len = max(max_len, len(turn['user'].split()))
             max_len = max(max_len, len(turn['resp_gen'].split()))
     
-
     logger.info('Max len: {}; Avg len: {}; Avg usr len: {}; Avg sys len: {};'.format(max_len, (total_usr_tokens + total_sys_tokens) / (total_sys_turn + total_usr_turn), total_usr_tokens / total_usr_turn, total_sys_tokens / total_sys_turn))
 
 def compute_success_and_inform_rate(args, cfg, data):
@@ -70,11 +69,11 @@ def compute_gptscore(args, data, lm_ckpt, agent=None):
     else:
         logger.info('Online Evaluation: GPT Score: %f;', gptscore)
 
-def compute_nsp_score(args, data):
+def compute_nsp_score(args, data, nsp_ckpt):
     cfg = get_config_without_unknown()
 
     cfg.backbone = 'bert-base-uncased'
-    cfg.ckpt = './bert_nsp_model_lr_1e_5_1/ckpt-epoch9'
+    cfg.ckpt = nsp_ckpt
     cfg.version = args.version
     cfg.compute_for_single = True
     cfg.task = 'nsp'
@@ -105,6 +104,10 @@ if __name__ == "__main__":
     parser.add_argument("-gpt_score_normalize", action='store_true')
     parser.add_argument("-gpt_score_singe_side", action='store_true')
     parser.add_argument("-test_model_name", type=str, default=None)
+    parser.add_argument("-lm_ckpt_sys", type=str, default='./bart_score_gpt_lm_model_lr_1e_4_sys_side/ckpt-epoch6', help='sentence score only for system responses')
+    parser.add_argument("-lm_ckpt_usr", type=str, default='./bart_score_gpt_lm_model_lr_1e_4_usr_side/ckpt-epoch6', help='sentence score only for user utterances')
+    parser.add_argument("-lm_ckpt", type=str, default='./bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6', help='sentence score model')
+    parser.add_argument("-nsp_ckpt", type=str, default='./bert_nsp_model_lr_1e_5_1/ckpt-epoch9', help='session score model')
 
     args = parser.parse_args()
 
@@ -137,26 +140,20 @@ if __name__ == "__main__":
     if args.use_inform_success:
         compute_success_and_inform_rate(args, cfg, data)
 
-    # if args.use_gptscore:
-    #     if args.gpt_score_singe_side:
-    #         lm_ckpt_sys = './bart_score_gpt_lm_model_lr_1e_4_sys_side/ckpt-epoch6'
-    #         lm_ckpt_usr = './bart_score_gpt_lm_model_lr_1e_4_usr_side/ckpt-epoch6'
-    #         compute_gptscore(args, data, lm_ckpt_sys, agent='sys')
-    #         compute_gptscore(args, data, lm_ckpt_usr, agent='usr')
-    #     else:
-    #         lm_ckpt = './bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6'
-    #         compute_gptscore(args, data, lm_ckpt)
-
-    lm_ckpt_sys = './bart_score_gpt_lm_model_lr_1e_4_sys_side/ckpt-epoch6'
-    lm_ckpt_usr = './bart_score_gpt_lm_model_lr_1e_4_usr_side/ckpt-epoch6'
-    compute_gptscore(args, data, lm_ckpt_sys, agent='sys')
-    compute_gptscore(args, data, lm_ckpt_usr, agent='usr')
-    lm_ckpt = './bart_score_gpt_lm_model_lr_1e_4/ckpt-epoch6'
-    args.gpt_score_singe_side = False
-    compute_gptscore(args, data, lm_ckpt)
+    if args.use_gptscore:
+        if args.gpt_score_singe_side:
+            lm_ckpt_sys = args.lm_ckpt_sys
+            lm_ckpt_usr = args.lm_ckpt_usr
+            compute_gptscore(args, data, lm_ckpt_sys, agent='sys')
+            compute_gptscore(args, data, lm_ckpt_usr, agent='usr')
+        
+        lm_ckpt = args.lm_ckpt
+        args.gpt_score_singe_side = False
+        compute_gptscore(args, data, lm_ckpt)
 
     if args.use_nspscore:
-        compute_nsp_score(args, data)
+        nsp_ckpt = args.nsp_ckpt
+        compute_nsp_score(args, data, nsp_ckpt)
 
     save_results_with_metrics(args, data)
     

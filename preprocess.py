@@ -1,11 +1,8 @@
 import os
-from posixpath import dirname
 import re
 import copy
 import argparse
-from collections import OrderedDict, defaultdict
-from urllib import request
-from xml import dom
+from collections import OrderedDict
 
 import spacy
 
@@ -16,7 +13,6 @@ from utils.utils import load_json, save_json, load_text, convert_goal_dict_to_sp
 from utils.clean_dataset import clean_text, clean_slot_values
 
 from external_knowledges import MultiWozDB
-
 
 class Preprocessor(object):
     def __init__(self, version):

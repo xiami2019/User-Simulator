@@ -1,22 +1,14 @@
+import argparse
 from utils.utils import load_json, save_json
 
-# offline_path = 'dialog_t5_small_offline_ep11.json'
-# online_path = 'dialog_t5_small_offline_ep11_onlineformat.json'
+parser = argparse.ArgumentParser(description="Argument for preprocessing")
+parser.add_argument('-offline_path', type=str, default=None, required=True)
+parser.add_argument('-online_path', type=str, default=None, required=True)
 
-# offline_path = 'pptod_offline.json'
-# online_path = 'pptod_offline_onlineformat.json'
+args = parser.parse_args()
 
-# offline_path = 'ubar_offline.json'
-# online_path = 'ubar_offline_onlineformat.json'
-
-# offline_path = 'mttod_offline.json'
-# online_path = 'mttod_offline_onlineformat.json'
-
-# offline_path = 'mttod_rl_offline.json'
-# online_path = 'mttod_rl_offline_onlineformat.json'
-
-offline_path = 'dialog_rl_v9_1.json'
-online_path = 'dialog_rl_v9_1_onlineformat.json'
+offline_path = args.offline_path
+online_path = args.online_path
 
 offline_data = load_json(offline_path)
 online_data = []

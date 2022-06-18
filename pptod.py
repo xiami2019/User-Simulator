@@ -1,4 +1,3 @@
-# training pptod-small
 import os
 import torch
 import random
@@ -374,20 +373,13 @@ class PPTODRunner(BaseRunner):
 def parse_config():
     parser = argparse.ArgumentParser()
     # dataset configuration
-    parser.add_argument('--data_path_prefix', type=str, help='The path where the data stores.')
-    parser.add_argument('--shuffle_mode', type=str, default='shuffle_session_level', 
-        help="shuffle_session_level or shuffle_turn_level, it controls how we shuffle the training data.")
-    parser.add_argument('--use_db_as_input', type=str, default='True', 
-        help="True or False, whether includes db result as part of the input when generating response.")
-    parser.add_argument('--add_special_decoder_token', default='True', type=str, help='Whether we discriminate the decoder start and end token for different tasks.')
-    parser.add_argument('--train_data_ratio', type=float, default=1.0, help='the ratio of training data used for training the model')
     parser.add_argument("--version", type=str, default="2.0", choices=["2.0", "2.1"])
 
     # model configuration
     parser.add_argument('--backbone', type=str, default='pptod_small', help='pptod_small, pptod_base, pptod_large')
     parser.add_argument('--ckpt', type=str, default=None, help='the path that stores pretrained checkpoint.')
     parser.add_argument('--train_from', type=str, default=None)
-    parser.add_argument("--model_name", type=str, default='pptod', help = 'mttod, pptod, ubar, galaxy')
+    parser.add_argument('--model_name', type=str, default='pptod', help = 'mttod, pptod, ubar, galaxy')
 
     # training configuration
     parser.add_argument('--run_type', type=str, default='train', choices=['train', 'predict'])

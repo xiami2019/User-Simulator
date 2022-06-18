@@ -1,14 +1,3 @@
-'''
-2022.4.14
-我可以很久不和你联络
-任日子一天这么过
-
-2022.4.15
-不要你离开
-距离隔不开
-思念变成海
-在窗外进不来
-'''
 import os
 import glob
 import math
@@ -48,7 +37,7 @@ def get_config_without_unknown():
     parser.add_argument('-model_dir', type=str, default='gpt_lm_model')
     parser.add_argument('-no_learning_rate_decay', action="store_true")
     parser.add_argument('-text_file', type=str, default=None)
-    parser.add_argument('-ppl_level', type=str, default='session', choices=['sentence', 'session', 'bart_score'])
+    parser.add_argument('-ppl_level', type=str, default='bart_score', choices=['sentence', 'session', 'bart_score'])
     parser.add_argument('-early_stopping', type=int, default=5)
     parser.add_argument('-task', type=str, default='ppl', choices=['ppl', 'nsp'])
     parser.add_argument('-compute_for_single', action="store_true")

@@ -1,3 +1,4 @@
+#convert test set data to online format
 from utils.utils import load_json, save_json
 
 file1 = 'dialog_t5_small_offline_ep11_onlineformat.json'

@@ -19,15 +19,7 @@ from reader import MultiWOZReader
 
 logger = get_or_create_logger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device2 = torch.device('cpu')
-# if torch.cuda.device_count() == 2:
-#     device2 = torch.device("cuda", 1)
-
-'''
-岁月难得沉默
-秋风厌倦漂泊
-夕阳赖着不走挂在墙头舍不得我
-'''
+device2 = torch.device('cpu') # GPU out of memory
 
 # special tokens map
 mttod_to_pptod = {
@@ -60,15 +52,13 @@ def get_config():
     parser.add_argument("-rl_dial_one_epoch", type=int, default=200)
     parser.add_argument("-rl_batch_size", type=int, default=1)
     parser.add_argument("-epochs", type=int, default=20)
-    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small_ur/ckpt-epoch11')
+    parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/ckpt-epoch11')
     parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/ckpt-epoch11')
     parser.add_argument("-simulator_save_path", type=str, default=None)
     parser.add_argument("-dialog_save_path", type=str, default=None)
-    # parser.add_argument("-simulator_path", type=str, default='./simulator_t5_small/simulator_rl_v5_epoch_7')
-    # parser.add_argument("-dialog_sys_path", type=str, default='./dialogue_t5_small/dialog_rl_v5_epoch_7')
     parser.add_argument("-max_turn_num", type=int, default=20)
     parser.add_argument("-data_dir", type=str, default='./data/MultiWOZ_2.0/')
-    parser.add_argument("-model_dir", type=str, default="simulator_t5_small")
+    parser.add_argument("-model_dir", type=str, default="dialogue_t5_small")
     parser.add_argument("-discount_factor", type=float, default=0.99)
     parser.add_argument('-rl_lr', type=float, default=0.0001, help='learning rate for reinforcement learning')
     parser.add_argument('-grad_clip', type=float, default=1)
@@ -86,6 +76,7 @@ def get_config():
     parser.add_argument('-gpt_score_coef', type=float, default=0.1)
     parser.add_argument('-use_mean_rl_loss', action="store_true")
     parser.add_argument('-generate_results_path', type=str, default='generate_results.json')
+    parser.add_argument('-interaction_type', type=str, default='test', choices=['test', 'dev'])
     parser.add_argument('-model_name', type=str, default='mttod', choices=['mttod', 'ubar', 'pptod', 'galaxy'])
     args = parser.parse_args()
 
@@ -531,8 +522,6 @@ class InteractionEnvironment(object):
                 bspn_gen, _ = self.finalize_bspn(belief_states_output[0])
                 
                 if with_logprob:
-                    # assert len(bspn_gen) == len(belief_states_prob)
-                    # single_turn['bspn_prob'] = belief_states_prob
                     single_turn['bspn_prob'] = belief_states_prob
                 
                 bspn_gen = self.dialog_tokenizer.decode(bspn_gen, clean_up_tokenization_spaces=False)
@@ -1428,10 +1417,6 @@ class InteractionEnvironment(object):
             logger.info('Epoch: {}; Success rate: {}; Inform rate: {}; Best success: {}; Best epoch: {}'.format(epoch, success, match, best_success, best_success_epoch))
 
 if __name__ == '__main__':
-    '''
-    沉默着，走了有，多遥远
-    蓦然间，抬起头，才发现
-    '''
     cfg = get_config()
 
     # different tod model
@@ -1454,7 +1439,7 @@ if __name__ == '__main__':
         interaction.train_RL()
     else:
         count = 0
-        for goal in tqdm(interaction.all_goals['test']):
+        for goal in tqdm(interaction.all_goals[cfg.interaction_type]):
             if cfg.model_name == 'mttod':
                 dial_gen = interaction.generate_single_dialog(goal)
             elif cfg.model_name == 'pptod':
