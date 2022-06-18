@@ -1,32 +1,7 @@
-"""
-   MTTOD: evaluator.py
-
-   Evaluate MultiWoZ Performance.
-
-   This code is referenced from thu-spmi's damd-multiwoz repository:
-   (https://github.com/thu-spmi/damd-multiwoz/blob/master/eval.py)
-
-   Copyright 2021 ETRI LIRS, Yohan Lee
-   Copyright 2019 Yichi Zhang
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-"""
-
 import os
 import math
 import argparse
 import logging
-import numpy as np
 from types import SimpleNamespace
 from collections import Counter, OrderedDict
 from nltk.util import ngrams
@@ -307,7 +282,7 @@ class MultiWozEvaluator(object):
 
         return f1 * 100
 
-    def context_to_response_eval(self, dials, eval_dial_list=None, add_auxiliary_task=False):
+    def context_to_response_eval(self, dials, eval_dial_list=None, add_auxiliary_task=False, add_success_rate=False):
         counts = {}
         for req in self.requestables:
             counts[req+'_total'] = 0
@@ -333,6 +308,9 @@ class MultiWozEvaluator(object):
             # print('\n',dial_id)
             success, match, stats, counts = self._evaluateGeneratedDialogue(
                 dial, goal, reqs, counts, add_auxiliary_task=add_auxiliary_task)
+
+            if add_success_rate:
+                dials[dial_id].append({'success': success, 'inform': match})
 
             successes += success
             matches += match
@@ -435,8 +413,8 @@ class MultiWozEvaluator(object):
                 for requestable in requestables:
                     if requestable == 'reference':
                         if '[value_reference]' in sent_t:
-                            # if pointer was allowing for that?
                             if 'pointer' not in turn:
+                                # In online evaluation, groundtruth booking status is not a available
                                 provided_requestables[domain].append('reference')
                             elif 'booked' in turn['pointer'] or 'ok' in turn['pointer']:
                                 provided_requestables[domain].append('reference')
@@ -629,7 +607,7 @@ class MultiWozEvaluator(object):
         else:
             return None
 
-    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False, online_eval=False):
+    def e2e_eval(self, data, eval_dial_list=None, add_auxiliary_task=False, eval_for_us=False, online_eval=False, add_success_rate=False):
         if not online_eval:
             if eval_for_us:
                 bleu = self.bleu_metric_us(data)
@@ -638,7 +616,7 @@ class MultiWozEvaluator(object):
                 bleu = self.bleu_metric(data)
         
         success, match, req_offer_counts, dial_num = self.context_to_response_eval(
-            data, eval_dial_list=eval_dial_list)
+            data, eval_dial_list=eval_dial_list, add_success_rate=add_success_rate)
 
         if online_eval:
             return success, match
@@ -673,6 +651,7 @@ def convert_results_format(results):
     return processed_results
 
 def convert_results_format_to_mwzeval(result):
+    # 转成官方的评测脚本格式
     def bspn_to_constraint_dict(bspn):
         bspn = bspn.split() if isinstance(bspn, str) else bspn
 
@@ -820,8 +799,9 @@ if __name__ == "__main__":
     original_data = load_json(args.output_result_path)
     if args.eval_type == 'online':
         data = convert_results_format(original_data)
-        # data = original_data
         mwzeval_data = convert_results_format_to_mwzeval(original_data)
+    else:
+        data = original_data
 
     dial_by_domain = load_json("data/MultiWOZ_2.0/dial_by_domain.json")
 

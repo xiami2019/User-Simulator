@@ -141,3 +141,5 @@ DB_3_TOKEN = "[db_3]"
 DB_STATE_TOKENS = [DB_NULL_TOKEN, DB_0_TOKEN, DB_1_TOKEN, DB_2_TOKEN, DB_3_TOKEN]
 
 SPECIAL_TOKENS = USER_TOKENS + BELIEF_TOKENS + DB_TOKENS + ACTION_TOKENS + RESP_TOKENS + DB_STATE_TOKENS + GOAL_TOKENS + USER_ACTION_TOEKNS
+
+UBAR_TOKENS = ['<sos_u>', '<eos_u>', '<sos_r>', '<eos_r>', '<sos_b>', '<eos_b>', '<sos_a>', '<eos_a>', '<sos_d>', '<eos_d>']

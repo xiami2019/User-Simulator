@@ -117,13 +117,10 @@ def convert_generate_action_span_to_dict(act_span):
                 current_intent = temp_token
                 if current_domain:
                     act_dict[current_domain][current_intent] = set()
-                # else:
-                #     raise Exception("It's an intent without a domain token.")
         else: # slot name
             if current_domain and current_intent:
-                act_dict[current_domain][current_intent].add(single_token)
-            # else:
-            #     raise Exception("An domain token and an intent token are expected.")
+                if current_domain in act_dict and current_intent in act_dict[current_domain]:
+                    act_dict[current_domain][current_intent].add(single_token)
 
     for domain in act_dict:
         for intent in act_dict[domain]:
@@ -453,6 +450,28 @@ def split_user_act_and_resp(tokenizer, model_output, model_prob=None):
             utter_prob = 0 * utter_prob
 
     return user_aspn, user_utterance, aspn_prob, utter_prob
+
+def pad_sequence_at_left(sequences, batch_first=False, padding_value=0.0):
+    # assuming trailing dimensions and type of all the Tensors
+    # in sequences are same and fetching those from sequences[0]
+    max_size = sequences[0].size()
+    trailing_dims = max_size[1:]
+    max_len = max([s.size(0) for s in sequences])
+    if batch_first:
+        out_dims = (len(sequences), max_len) + trailing_dims
+    else:
+        out_dims = (max_len, len(sequences)) + trailing_dims
+
+    out_tensor = sequences[0].new_full(out_dims, padding_value)
+    for i, tensor in enumerate(sequences):
+        length = tensor.size(0)
+        # use index notation to prevent duplicate references to the tensor
+        if batch_first:
+            out_tensor[i, max_len-length:, ...] = tensor
+        else:
+            out_tensor[max_len-length:, i, ...] = tensor
+
+    return out_tensor
 
 if __name__ == '__main__':
     value = 'Saint John \'s College'

@@ -1,23 +1,3 @@
-"""
-   MTTOD: config.py
-
-   Command-line argument parser configuration
-
-   Copyright 2021 ETRI LIRS, Yohan Lee
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-"""
-
 import os
 import argparse
 
@@ -32,10 +12,10 @@ logger = get_or_create_logger(__name__)
 def add_config(parser):
     """ define arguments """
     group = parser.add_argument_group("Construction")
-    group.add_argument("-backbone", type=str, default="t5-base",
+    group.add_argument("-backbone", type=str, default="t5-small",
                        choices=["t5-small", "t5-base", "t5-large"])
-    group.add_argument("-version", type=str, default="2.1",
-                       choices=["2.0", "2.1", "2.4"])
+    group.add_argument("-version", type=str, default="2.0",
+                       choices=["2.0", "2.1"])
     group.add_argument("-task", type=str, default="e2e",
                        choices=["dst", "e2e"])
     group.add_argument("-add_auxiliary_task", action="store_true")
@@ -87,9 +67,10 @@ def add_config(parser):
     group.add_argument("-model_dir", type=str, default="checkpoints")
     group.add_argument("-seed", type=int, default=42)
     group.add_argument("-ckpt", type=str, default=None)
-    group.add_argument("-log_frequency", type=int, default=100)
+    group.add_argument("-log_frequency", type=int, default=-1)
     group.add_argument("-max_to_keep_ckpt", type=int, default=10)
     group.add_argument("-num_gpus", type=int, default=1)
+    group.add_argument("-model_name", type=str, default='mttod', help = 'mttod, pptod, ubar, galaxy')
 
 
 def check_config(parser):
