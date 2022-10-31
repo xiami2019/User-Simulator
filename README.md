@@ -1,5 +1,5 @@
 # Is MultiWOZ a Solved Task? An Interactive TOD Evaluation Framework with User Simulator
-This is the code implementation of our paper, accepted by the findings of EMNLP2022.
+Accepted by the findings of EMNLP2022.
 ## Data Preprocess
 Our experiments mainly focus on MultiWOZ 2.0.
 You should unzip the data.zip at first and then run this script:
