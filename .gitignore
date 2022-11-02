@@ -1,5 +1,6 @@
-data
-data.zip
+data/MultiWOZ_2.0
+data/MultiWOZ_2.1
+# data.zip
 simulator_t5*
 dialogue_t5*
 generate_example*
