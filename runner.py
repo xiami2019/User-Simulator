@@ -772,8 +772,8 @@ class MultiWOZRunner(BaseRunner):
             result = self.iterator.get_readable_batch(dial_batch)
             results.update(**result)
 
-        if self.cfg.output:
-            save_json(results, os.path.join(self.cfg.ckpt, self.cfg.output))
+        # if self.cfg.output:
+        #     save_json(results, os.path.join(self.cfg.ckpt, self.cfg.output))
 
         evaluator = MultiWozEvaluator(self.reader, self.cfg.pred_data_type)
 
@@ -785,6 +785,9 @@ class MultiWOZRunner(BaseRunner):
 
             logger.info('match: %2.2f; success: %2.2f; bleu: %2.2f; score: %.2f' % (
                 match, success, bleu, score))
+
+            if self.cfg.output:
+                save_json(results, os.path.join(self.cfg.ckpt, self.cfg.output))
         else:
             joint_goal, f1, accuracy, count_dict, correct_dict = evaluator.dialog_state_tracking_eval(
                 results, add_auxiliary_task=self.cfg.add_auxiliary_task)

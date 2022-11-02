@@ -32,10 +32,17 @@ class BLEUScorer:
         c = 0
         weights = [0.25, 0.25, 0.25, 0.25]
 
+        single_turn_bleu = []
+
         # accumulate ngram statistics
         for hyps, refs in parallel_corpus:
             hyps = [hyp.split() for hyp in hyps]
             refs = [ref.split() for ref in refs]
+
+            count_single = [0, 0, 0, 0]
+            clip_count_single = [0, 0, 0, 0]
+            r_single = 0
+            c_single = 0
             for hyp in hyps:
 
                 for i in range(4):
@@ -43,6 +50,7 @@ class BLEUScorer:
                     hypcnts = Counter(ngrams(hyp, i + 1))
                     cnt = sum(hypcnts.values())
                     count[i] += cnt
+                    count_single[i] += cnt
 
                     # compute clipped counts
                     max_counts = {}
@@ -54,6 +62,7 @@ class BLEUScorer:
                     clipcnt = dict((ng, min(count, max_counts[ng]))
                                    for ng, count in hypcnts.items())
                     clip_count[i] += sum(clipcnt.values())
+                    clip_count_single[i] += sum(clipcnt.values())
 
                 # accumulate r & c
                 bestmatch = [1000, 1000]
@@ -67,6 +76,23 @@ class BLEUScorer:
                 r += bestmatch[1]
                 c += len(hyp)
 
+                r_single += bestmatch[1]
+                c_single += len(hyp)
+
+            if c_single == 0:
+                single_turn_bleu.append(0)
+                continue
+
+            # 计算单轮BLEU
+            p0 = 1e-7
+            bp = 1 if c_single > r_single else math.exp(1 - float(r_single) / float(c_single))
+            p_ns = [float(clip_count_single[i]) / float(count_single[i] + p0) + p0 \
+            for i in range(4)]
+            s = math.fsum(w * math.log(p_n) \
+                    for w, p_n in zip(weights, p_ns) if p_n)
+            bleu = bp * math.exp(s)
+            single_turn_bleu.append(bleu * 100)
+
         # computing bleu score
         p0 = 1e-7
         bp = 1 if c > r else math.exp(1 - float(r) / float(c))
@@ -75,7 +101,8 @@ class BLEUScorer:
         s = math.fsum(w * math.log(p_n)
                       for w, p_n in zip(weights, p_ns) if p_n)
         bleu = bp * math.exp(s)
-        return bleu * 100
+        # return bleu * 100
+        return bleu * 100, single_turn_bleu
 
 class MultiWozEvaluator(object):
     def __init__(self, reader, eval_data_type="test"):
@@ -127,7 +154,17 @@ class MultiWozEvaluator(object):
         wrap_generated = [[_] for _ in gen]
         wrap_truth = [[_] for _ in truth]
         if gen and truth:
-            sc = self.bleu_scorer.score(zip(wrap_generated, wrap_truth))
+            # sc = self.bleu_scorer.score(zip(wrap_generated, wrap_truth))
+            sc, single_turn_bleu = self.bleu_scorer.score(zip(wrap_generated, wrap_truth))
+            turn_index = 0
+            for dial_id, dial in data.items():
+                if eval_dial_list and dial_id not in eval_dial_list:
+                    continue
+                for turn in dial:
+                    turn['resp_BLEU'] = single_turn_bleu[turn_index]
+                    turn_index += 1
+            print(turn_index, len(single_turn_bleu))
+            assert turn_index == len(single_turn_bleu)
         else:
             sc = 0.0
         return sc
