@@ -2,7 +2,12 @@
 Accepted by the findings of EMNLP2022.
 ## Data Preprocess
 Our experiments mainly focus on MultiWOZ 2.0.
-You should unzip the data.zip at first and then run this script:
+You should unzip the data.zip at first:
+```
+cd data
+unzip data.zip
+```
+and then run this script:
 ```
 python preprocess.py -version 2.0
 ```
