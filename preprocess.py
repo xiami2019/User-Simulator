@@ -357,7 +357,7 @@ class Preprocessor(object):
                     # normalize inform slots
                     for intent in ['info', 'fail_info', 'book', 'fail_book']:
                         if g.get(intent):
-                            for inform_slot in g[intent]:
+                            for inform_slot in list(g[intent]):
                                 if definitions.NORMALIZE_SLOT_NAMES.get(inform_slot):
                                     new_inform_slot = definitions.NORMALIZE_SLOT_NAMES[inform_slot]
                                     g[intent][new_inform_slot] = g[intent].pop(inform_slot)
